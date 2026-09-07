@@ -236,6 +236,9 @@ test('normalizarImporte: tolera espacios y codigo de moneda alrededor', () => {
 test('normalizarImporte: rechaza lo que no es formato espanol', () => {
   assert.equal(normalizarImporte('1,234.56'), null); // formato ingles
   assert.equal(normalizarImporte('1 234,56'), null); // miles con espacio
+  assert.equal(normalizarImporte('12 3,45'), null);  // espacio interno
+  assert.equal(normalizarImporte('1 2,34'), null);
+  assert.equal(normalizarImporte('9 9,00'), null);
   assert.equal(normalizarImporte('1234'), null);     // sin decimales
   assert.equal(normalizarImporte(''), null);
   assert.equal(normalizarImporte(null), null);
@@ -266,7 +269,7 @@ test('normalizarTexto: minusculas y sin acentos', () => {
 
 - [ ] **Step 2: Verificar que fallan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: FAIL, `Cannot find module '../src/parser.js'`
 
 - [ ] **Step 3: Implementar**
@@ -283,7 +286,10 @@ const RE_FECHA = /^(\d{2})-(\d{2})-(\d{4})$/;
 
 export function normalizarImporte(texto) {
   if (typeof texto !== 'string') return null;
-  const limpio = texto.replace(/\s|EUR|[A-Z]{3}$/g, '').trim();
+  // Se recortan los extremos y el codigo de moneda, pero NUNCA los espacios
+  // internos: el texto viene de fragmentos de PDF unidos con espacios, y
+  // borrarlos convertiria "12 3,45" en un importe valido de 123,45.
+  const limpio = texto.trim().replace(/\s*[A-Z]{3}$/, '').trim();
   if (!RE_IMPORTE.test(limpio)) return null;
   const n = Number(limpio.replace(/\./g, '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
@@ -315,7 +321,7 @@ export function normalizarTexto(texto) {
 
 - [ ] **Step 4: Verificar que pasan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: PASS, 6 tests.
 
 - [ ] **Step 5: Commit**
@@ -439,7 +445,7 @@ test('agruparEnLineas: lista vacia da lista vacia', () => {
 
 - [ ] **Step 3: Verificar que fallan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: FAIL, `agruparEnLineas is not a function`
 
 - [ ] **Step 4: Implementar**
@@ -455,24 +461,38 @@ function toleranciaY(alturaFuente) {
 }
 
 export function agruparEnLineas(items) {
-  const utiles = (items || []).filter(it => it && it.str && it.str.trim());
+  // Se ordena por Y antes de agrupar para que el resultado no dependa del
+  // orden en que PDF.js emita los fragmentos, y se compara cada fragmento
+  // con el ANTERIOR en vez de con un ancla fija: asi una linea ancha con
+  // deriva vertical acumulada no se parte por la mitad.
+  const utiles = (items || [])
+    .filter(it => it && it.str && it.str.trim())
+    .map(it => ({
+      x: it.transform[4],
+      y: it.transform[5],
+      altura: it.height || Math.abs(it.transform[3]) || 10,
+      texto: it.str.trim(),
+    }))
+    .sort((a, b) => b.y - a.y);
   if (utiles.length === 0) return [];
 
   const grupos = [];
-  for (const it of utiles) {
-    const x = it.transform[4];
-    const y = it.transform[5];
-    const altura = it.height || Math.abs(it.transform[3]) || 10;
-    const tol = toleranciaY(altura);
-    let grupo = grupos.find(g => Math.abs(g.y - y) <= tol);
-    if (!grupo) {
-      grupo = { y, fragmentos: [] };
-      grupos.push(grupo);
+  let actual = null;
+  let anterior = null;
+  for (const f of utiles) {
+    // La tolerancia es la mayor de las dos alturas implicadas, para que
+    // unir A con B de el mismo resultado que unir B con A.
+    const tol = anterior === null
+      ? 0
+      : Math.max(toleranciaY(f.altura), toleranciaY(anterior.altura));
+    if (actual === null || Math.abs(anterior.y - f.y) > tol) {
+      actual = { y: f.y, fragmentos: [] };
+      grupos.push(actual);
     }
-    grupo.fragmentos.push({ x, texto: it.str.trim() });
+    actual.fragmentos.push({ x: f.x, texto: f.texto });
+    anterior = f;
   }
 
-  grupos.sort((a, b) => b.y - a.y); // de arriba abajo
   for (const g of grupos) {
     g.fragmentos.sort((a, b) => a.x - b.x);
     g.texto = g.fragmentos.map(f => f.texto).join(' ');
@@ -483,7 +503,7 @@ export function agruparEnLineas(items) {
 
 - [ ] **Step 5: Verificar que pasan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: PASS, 12 tests.
 
 - [ ] **Step 6: Commit**
@@ -759,7 +779,7 @@ test('parsearPagina: importe en formato no espanol cuenta como faltante', () => 
 
 - [ ] **Step 3: Verificar que fallan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: FAIL, `parsearPagina is not a function`
 
 - [ ] **Step 4: Implementar**
@@ -919,7 +939,7 @@ export function parsearPagina(lineas, numeroPagina) {
 
 - [ ] **Step 5: Verificar que pasan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: PASS, 26 tests.
 
 - [ ] **Step 6: Commit**
@@ -981,7 +1001,7 @@ test('parsearPagina: extra ausente no rompe el nucleo', () => {
 
 - [ ] **Step 2: Verificar que fallan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: FAIL, `r.extra.iban` es `undefined`
 
 - [ ] **Step 3: Implementar**
@@ -1018,7 +1038,7 @@ En `src/parser.js`, añadir antes del `return` de `parsearPagina`:
 
 - [ ] **Step 4: Verificar que pasan**
 
-Run: `node --test test/`
+Run: `node --test test/*.test.js`
 Expected: PASS, 28 tests.
 
 - [ ] **Step 5: Commit**
@@ -1961,7 +1981,7 @@ curl -fSL -o vendor/pdf.min.js \
 curl -fSL -o vendor/pdf.worker.min.js \
   https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js
 
-node --test test/    # tests del parser
+node --test test/*.test.js   # tests del parser
 node build.js        # genera buscador.html
 ```
 
@@ -1991,7 +2011,7 @@ formato.
 - [ ] **Step 2: Ejecutar la batería completa**
 
 ```bash
-node --test test/
+node --test test/*.test.js
 node build.js
 git status --porcelain --ignored | grep '^!!'
 ```
