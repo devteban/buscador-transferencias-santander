@@ -279,3 +279,21 @@ test('parsearPagina: con una sola marca >> no se inventa importe ni ordenante', 
   assert.equal(r.ordenante, null);
   assert.equal(a.motivo, 'campos_incompletos');
 });
+
+test('parsearPagina: rellena los campos secundarios en extra', () => {
+  const r = parsearPagina(paginaMolde(), 1).registro;
+  assert.equal(r.extra.beneficiario, 'EMPRESA EJEMPLO SL');
+  assert.equal(r.extra.iban, 'ES00 1111 2222 3333 4444 5555');
+  assert.equal(r.extra.titular, 'EMPRESA EJEMPLO SL');
+  assert.equal(r.extra.entidad, 'BANCO EJEMPLO, S.A.');
+  assert.equal(r.extra.importeOrigen, 345);
+  assert.equal(r.extra.contravalor, 345);
+});
+
+test('parsearPagina: extra ausente no rompe el nucleo', () => {
+  const lineas = paginaMolde().filter(l => !l.texto.includes('IBAN:'));
+  const { registro, anomalia } = parsearPagina(lineas, 1);
+  assert.equal(anomalia, null);
+  assert.equal(registro.extra.iban, undefined);
+  assert.equal(registro.importe, 345);
+});

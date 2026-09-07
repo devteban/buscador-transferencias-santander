@@ -249,6 +249,32 @@ export function parsearPagina(lineas, numeroPagina) {
     }
   }
 
+  // --- Campos secundarios. No se muestran por defecto, pero extraerlos
+  // ahora cuesta cero y evita reprocesar 1500 paginas si algun dia hacen
+  // falta. ---
+  const ETIQUETAS_EXTRA = [
+    ['iban', 'IBAN:', /^\s*([A-Z]{2}[\d\s]{10,})/],
+    ['titular', 'Titular:', /^\s*(.+?)\s*$/],
+    ['entidad', 'Entidad:', /^\s*(.+?)\s*$/],
+    ['oficina', 'Oficina:', /^\s*(.+?)\s*$/],
+    ['porCuentaDe', 'POR CUENTA DE:', /^\s*(.+?)\s*$/],
+    ['nuestraRef', 'Nuestra Refª:', /^\s*(.+?)(?=Fecha operación:|$)/],
+  ];
+  for (const [clave, etiqueta, patron] of ETIQUETAS_EXTRA) {
+    const v = valorTrasEtiqueta(lineas, etiqueta, patron);
+    if (v && v.trim()) reg.extra[clave] = v.trim();
+  }
+
+  const IMPORTES_EXTRA = [
+    ['importeOrigen', 'Importe origen:'],
+    ['importeRecibido', 'Importe recibido:'],
+    ['contravalor', 'Contravalor:'],
+  ];
+  for (const [clave, etiqueta] of IMPORTES_EXTRA) {
+    const v = valorTrasEtiqueta(lineas, etiqueta, /^\s*([\d.]*\d,\d{2})/);
+    if (v) reg.extra[clave] = normalizarImporte(v);
+  }
+
   reg.ordenanteBusqueda = normalizarTexto(reg.ordenante);
   reg.conceptoBusqueda = normalizarTexto(reg.concepto);
 
