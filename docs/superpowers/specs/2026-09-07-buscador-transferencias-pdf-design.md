@@ -174,11 +174,19 @@ evita reprocesar si algún día hacen falta.
 
 ### Paso 4 — Normalización
 
-- **Importes:** `1.234,56` se convierte a `1234.56` como número, para poder
-  filtrar por rango. Se conserva además el texto original para mostrarlo tal
-  como aparece en el PDF.
-- **Fechas:** `dd-mm-aaaa` se convierte a `aaaa-mm-dd` internamente, para
-  ordenar y comparar rangos. Se muestran en su formato original.
+- **Importes:** formato español y solo formato español — punto como
+  separador de miles, coma como decimal. `1.234,56` se convierte a `1234.56`
+  como número, para poder filtrar por rango. Se conserva además el texto
+  original para mostrarlo tal como aparece en el PDF. **No se aceptan
+  variantes** (espacio o apóstrofo como separador de miles, punto decimal):
+  un importe que no encaje en el patrón es una anomalía, no una
+  interpretación creativa. Es preferible que avise a que lea 1.234,56 como
+  1 euro sin decir nada.
+- **Fechas:** los campos de fecha usan `dd-mm-aaaa` y solo `dd-mm-aaaa`. Se
+  convierten a `aaaa-mm-dd` internamente, para ordenar y comparar rangos, y
+  se muestran en su formato original. Los otros formatos vistos en el sondeo
+  (`dd.mm.aaaa`, `dd/mm/aaaa`) aparecen únicamente dentro del texto del
+  concepto y no se interpretan como fechas: son parte del concepto.
 - **Texto:** se guarda una copia en minúsculas y sin diacríticos
   (normalización NFD y eliminación de marcas) para las búsquedas, de modo
   que `operacion` encuentre `OPERACIÓN` y `alojamiento` encuentre
