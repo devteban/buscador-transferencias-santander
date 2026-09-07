@@ -1,0 +1,25 @@
+:root {
+  --fondo: #fbfbfa; --texto: #1a1a18; --borde: #d9d7d2;
+  --acento: #7c5c3e; --tenue: #6b6a66; --aviso: #8a5a00;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0; background: var(--fondo); color: var(--texto);
+  font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+#app { max-width: 1400px; margin: 0 auto; padding: 24px 20px 60px; }
+h1 { font-size: 20px; font-weight: 600; margin: 0 0 4px; }
+.sub { color: var(--tenue); margin: 0 0 24px; }
+.zona {
+  border: 2px dashed var(--borde); border-radius: 10px;
+  padding: 40px 20px; text-align: center; cursor: pointer;
+}
+.zona.encima { border-color: var(--acento); background: #f5efe8; }
+.barra { height: 6px; background: var(--borde); border-radius: 3px; overflow: hidden; }
+.barra > i { display: block; height: 100%; background: var(--acento); width: 0; }
+.oculto { display: none; }
+table { border-collapse: collapse; width: 100%; font-size: 13px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--borde); }
+th { cursor: pointer; user-select: none; white-space: nowrap; }
+td.num { text-align: right; font-variant-numeric: tabular-nums; }
+.aviso { color: var(--aviso); }
