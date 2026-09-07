@@ -38,3 +38,36 @@ export function normalizarTexto(texto) {
     .replace(/\s+/g, ' ')
     .trim();
 }
+
+// Tolerancia vertical para decidir si dos fragmentos son la misma linea.
+// PDF.js casi nunca da Y identica; media altura de fuente es el criterio
+// habitual, con un minimo para fuentes muy pequenas.
+function toleranciaY(alturaFuente) {
+  return Math.max(2, alturaFuente * 0.5);
+}
+
+export function agruparEnLineas(items) {
+  const utiles = (items || []).filter(it => it && it.str && it.str.trim());
+  if (utiles.length === 0) return [];
+
+  const grupos = [];
+  for (const it of utiles) {
+    const x = it.transform[4];
+    const y = it.transform[5];
+    const altura = it.height || Math.abs(it.transform[3]) || 10;
+    const tol = toleranciaY(altura);
+    let grupo = grupos.find(g => Math.abs(g.y - y) <= tol);
+    if (!grupo) {
+      grupo = { y, fragmentos: [] };
+      grupos.push(grupo);
+    }
+    grupo.fragmentos.push({ x, texto: it.str.trim() });
+  }
+
+  grupos.sort((a, b) => b.y - a.y); // de arriba abajo
+  for (const g of grupos) {
+    g.fragmentos.sort((a, b) => a.x - b.x);
+    g.texto = g.fragmentos.map(f => f.texto).join(' ');
+  }
+  return grupos;
+}
