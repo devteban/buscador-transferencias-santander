@@ -47,24 +47,38 @@ function toleranciaY(alturaFuente) {
 }
 
 export function agruparEnLineas(items) {
-  const utiles = (items || []).filter(it => it && it.str && it.str.trim());
+  // Se ordena por Y antes de agrupar para que el resultado no dependa del
+  // orden en que PDF.js emita los fragmentos, y se compara cada fragmento
+  // con el ANTERIOR en vez de con un ancla fija: asi una linea ancha con
+  // deriva vertical acumulada no se parte por la mitad.
+  const utiles = (items || [])
+    .filter(it => it && it.str && it.str.trim())
+    .map(it => ({
+      x: it.transform[4],
+      y: it.transform[5],
+      altura: it.height || Math.abs(it.transform[3]) || 10,
+      texto: it.str.trim(),
+    }))
+    .sort((a, b) => b.y - a.y);
   if (utiles.length === 0) return [];
 
   const grupos = [];
-  for (const it of utiles) {
-    const x = it.transform[4];
-    const y = it.transform[5];
-    const altura = it.height || Math.abs(it.transform[3]) || 10;
-    const tol = toleranciaY(altura);
-    let grupo = grupos.find(g => Math.abs(g.y - y) <= tol);
-    if (!grupo) {
-      grupo = { y, fragmentos: [] };
-      grupos.push(grupo);
+  let actual = null;
+  let anterior = null;
+  for (const f of utiles) {
+    // La tolerancia es la mayor de las dos alturas implicadas, para que
+    // unir A con B de el mismo resultado que unir B con A.
+    const tol = anterior === null
+      ? 0
+      : Math.max(toleranciaY(f.altura), toleranciaY(anterior.altura));
+    if (actual === null || Math.abs(anterior.y - f.y) > tol) {
+      actual = { y: f.y, fragmentos: [] };
+      grupos.push(actual);
     }
-    grupo.fragmentos.push({ x, texto: it.str.trim() });
+    actual.fragmentos.push({ x: f.x, texto: f.texto });
+    anterior = f;
   }
 
-  grupos.sort((a, b) => b.y - a.y); // de arriba abajo
   for (const g of grupos) {
     g.fragmentos.sort((a, b) => a.x - b.x);
     g.texto = g.fragmentos.map(f => f.texto).join(' ');

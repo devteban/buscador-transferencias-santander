@@ -90,3 +90,33 @@ test('agruparEnLineas: descarta fragmentos vacios', () => {
 test('agruparEnLineas: lista vacia da lista vacia', () => {
   assert.deepEqual(agruparEnLineas([]), []);
 });
+
+test('agruparEnLineas: fuentes de distinto tamano en la misma linea', () => {
+  // Un fragmento grande y uno pequeno que visualmente comparten linea.
+  const items = [item(10, 700, 'GRANDE', 20), item(80, 696, 'peq', 4)];
+  assert.equal(agruparEnLineas(items).length, 1);
+});
+
+test('agruparEnLineas: deriva vertical acumulada no parte la linea', () => {
+  // Cada salto es de 1 unidad, muy por debajo de la tolerancia, pero el
+  // total entre extremos (5) la supera.
+  const items = [
+    item(10, 700, 'A'), item(40, 701, 'B'), item(70, 702, 'C'),
+    item(100, 703, 'D'), item(130, 704, 'E'), item(160, 705, 'F'),
+  ];
+  const lineas = agruparEnLineas(items);
+  assert.equal(lineas.length, 1);
+  assert.equal(lineas[0].fragmentos.length, 6);
+});
+
+test('agruparEnLineas: el resultado no depende del orden de entrada', () => {
+  const base = [
+    item(10, 700, 'A'), item(60, 700, 'B'),
+    item(10, 680, 'C'), item(60, 680, 'D'),
+  ];
+  const barajado = [base[2], base[1], base[3], base[0]];
+  const a = agruparEnLineas(base).map(l => l.texto);
+  const b = agruparEnLineas(barajado).map(l => l.texto);
+  assert.deepEqual(a, b);
+  assert.deepEqual(a, ['A B', 'C D']);
+});
