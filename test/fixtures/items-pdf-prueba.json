@@ -1,0 +1,908 @@
+[
+ [
+  {
+   "str": "Oficina:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    620.0,
+    555.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Fecha de envío: 05-02-2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    541.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    527.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "ORDENANTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "IMPORTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "BENEFICIARIO",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "AYUNTAMIENTO DE VILLARRIBA",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": ">>",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    260.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "345,00  EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": ">>",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    520.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "EMPRESA EJEMPLO SL",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "POR CUENTA DE:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    473.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Importe origen: 345,00 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    473.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "IBAN: ES00 1111 2222 3333 4444 5555",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    473.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Entidad: BANCO EJEMPLO, S.A.",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Cambio aplicado origen: 1,000000",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Titular: EMPRESA EJEMPLO SL",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Importe recibido: 345,00 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Contravalor: 345,00 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    437.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "TOTAL NUESTROS GASTOS : 0,00 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    425.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "CONCEPTO:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    403.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "ALOJAMIENTO Y ALIMENTACION DE ANIMALES",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    391.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Refª Origen:   /   Nuestra Refª: 10001ABC001Fecha operación: 03-02-2025 / Fecha valor: 04-02-2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    40.0
+   ],
+   "height": 8.0
+  }
+ ],
+ [
+  {
+   "str": "Oficina:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    620.0,
+    555.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Fecha de envío: 12-03-2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    541.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    527.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "ORDENANTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "IMPORTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "BENEFICIARIO",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "AYUNTAMIENTO DE VILLABAJO",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": ">>",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    260.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "12.345,67  EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": ">>",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    520.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "EMPRESA EJEMPLO SL",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "DE LOS MONTES",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    473.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "POR CUENTA DE:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Importe origen: 12.345,67 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "IBAN: ES00 1111 2222 3333 4444 5555",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Entidad: BANCO EJEMPLO, S.A.",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Cambio aplicado origen: 1,000000",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Titular: EMPRESA EJEMPLO SL",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Importe recibido: 12.345,67 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    437.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Contravalor: 12.345,67 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    425.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "TOTAL NUESTROS GASTOS : 0,00 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    413.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "CONCEPTO:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    391.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "ALOJAMIENTO Y ALIMENTACION",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    379.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "DE ANIMALES RECOGIDOS",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    367.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "EN VIA PUBLICA",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    355.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Refª Origen:   /   Nuestra Refª: 10002DEF002Fecha operación: 10-03-2025 / Fecha valor: 11-03-2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    40.0
+   ],
+   "height": 8.0
+  }
+ ],
+ [
+  {
+   "str": "Oficina:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    620.0,
+    555.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Fecha de envío: 20-04-2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    541.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    527.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "ORDENANTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "IMPORTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "BENEFICIARIO",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    505.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "MANCOMUNIDAD DE MUNICIPIOS",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": ">>",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    260.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "980,50  EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": ">>",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    520.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "EMPRESA EJEMPLO S L",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    485.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "DE LA COMARCA",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    473.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "DEL NORTE",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    461.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "POR CUENTA DE:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Importe origen: 980,50 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "IBAN: ES00 1111 2222 3333 4444 5555",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    449.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Entidad: BANCO EJEMPLO, S.A.",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    437.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Cambio aplicado origen: 1,000000",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    437.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Titular: EMPRESA EJEMPLO S L",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    560.0,
+    437.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Importe recibido: 980,50 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    425.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Contravalor: 980,50 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    413.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "TOTAL NUESTROS GASTOS : 0,00 EUR",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    300.0,
+    401.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "CONCEPTO:",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    379.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "FACTURA FECHA 15.01.2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    367.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "PERIODO 01/01/2025 A 31/01/2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    355.0
+   ],
+   "height": 8.0
+  },
+  {
+   "str": "Refª Origen:   /   Nuestra Refª: 10003GHI003Fecha operación: 18-04-2025 / Fecha valor: 19-04-2025",
+   "transform": [
+    8.0,
+    0,
+    0,
+    8.0,
+    20.0,
+    40.0
+   ],
+   "height": 8.0
+  }
+ ]
+]
