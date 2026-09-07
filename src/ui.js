@@ -4,6 +4,61 @@
 
 const APP = { registros: [], anomalias: [], nombreArchivo: '' };
 
+const COLUMNAS = [
+  { clave: 'pagina', titulo: 'Pág.', tipo: 'num', visible: true },
+  { clave: 'ordenante', titulo: 'Ordenante', tipo: 'texto', visible: true },
+  { clave: 'importe', titulo: 'Importe', tipo: 'importe', visible: true },
+  { clave: 'concepto', titulo: 'Concepto', tipo: 'texto', visible: true },
+  { clave: 'fechaOperacion', titulo: 'F. operación', tipo: 'fecha', visible: true },
+  { clave: 'fechaValor', titulo: 'F. valor', tipo: 'fecha', visible: true },
+  { clave: 'fechaEnvio', titulo: 'F. envío', tipo: 'fecha', visible: true },
+];
+
+APP.criterios = {};
+APP.orden = { clave: 'pagina', ascendente: true };
+
+function entreFechas(valor, desde, hasta) {
+  if (desde && (!valor || valor < desde)) return false;
+  if (hasta && (!valor || valor > hasta)) return false;
+  return true;
+}
+
+function filtrar(registros, c) {
+  const ordenante = normalizarTexto(c.ordenante || '');
+  const concepto = normalizarTexto(c.concepto || '');
+  const min = c.importeMin === '' || c.importeMin == null
+    ? null : Number(c.importeMin);
+  const max = c.importeMax === '' || c.importeMax == null
+    ? null : Number(c.importeMax);
+
+  return registros.filter(r => {
+    if (ordenante && !r.ordenanteBusqueda.includes(ordenante)) return false;
+    if (concepto && !r.conceptoBusqueda.includes(concepto)) return false;
+    if (min !== null && (r.importe === null || r.importe < min)) return false;
+    if (max !== null && (r.importe === null || r.importe > max)) return false;
+    if (!entreFechas(r.fechaOperacion, c.fechaOperacionDesde, c.fechaOperacionHasta))
+      return false;
+    if (!entreFechas(r.fechaValor, c.fechaValorDesde, c.fechaValorHasta))
+      return false;
+    if (!entreFechas(r.fechaEnvio, c.fechaEnvioDesde, c.fechaEnvioHasta))
+      return false;
+    return true;
+  });
+}
+
+function ordenar(registros, { clave, ascendente }) {
+  const signo = ascendente ? 1 : -1;
+  return [...registros].sort((a, b) => {
+    const va = a[clave], vb = b[clave];
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;   // los vacios siempre al final
+    if (vb === null) return -1;
+    if (va < vb) return -signo;
+    if (va > vb) return signo;
+    return 0;
+  });
+}
+
 function el(tag, props = {}, hijos = []) {
   const n = document.createElement(tag);
   Object.assign(n, props);
@@ -68,8 +123,9 @@ async function extraerTodo(doc, alProgresar) {
   for (let inicio = 1; inicio <= doc.numPages; inicio += TAM_LOTE) {
     const fin = Math.min(inicio + TAM_LOTE - 1, doc.numPages);
     for (let n = inicio; n <= fin; n++) {
+      let pagina = null;
       try {
-        const pagina = await doc.getPage(n);
+        pagina = await doc.getPage(n);
         const contenido = await pagina.getTextContent();
         const lineas = agruparEnLineas(contenido.items);
         const { registro, anomalia } = parsearPagina(lineas, n);
@@ -78,6 +134,8 @@ async function extraerTodo(doc, alProgresar) {
       } catch (err) {
         anomalias.push({ pagina: n, motivo: 'error_parser',
                          camposFaltantes: [], detalle: err.message });
+      } finally {
+        if (pagina) pagina.cleanup();
       }
     }
     alProgresar(fin, doc.numPages);
@@ -113,16 +171,113 @@ async function procesar(archivo, estado, barra) {
   }
 }
 
+function campo(etiqueta, props, alCambiar) {
+  const input = el('input', props);
+  input.addEventListener('input', () => alCambiar(input.value));
+  return el('label', {}, [etiqueta, input]);
+}
+
+function pintarFiltros(alFiltrar) {
+  const c = APP.criterios;
+  const set = (k) => (v) => { c[k] = v; alFiltrar(); };
+  const caja = el('div', { className: 'filtros' }, [
+    campo('Ordenante ', { type: 'search', placeholder: 'contiene…' },
+          set('ordenante')),
+    campo('Concepto ', { type: 'search', placeholder: 'contiene…' },
+          set('concepto')),
+    campo('Importe desde ', { type: 'number', step: '0.01' }, set('importeMin')),
+    campo('hasta ', { type: 'number', step: '0.01' }, set('importeMax')),
+    campo('F. operación desde ', { type: 'date' }, set('fechaOperacionDesde')),
+    campo('hasta ', { type: 'date' }, set('fechaOperacionHasta')),
+    campo('F. valor desde ', { type: 'date' }, set('fechaValorDesde')),
+    campo('hasta ', { type: 'date' }, set('fechaValorHasta')),
+    campo('F. envío desde ', { type: 'date' }, set('fechaEnvioDesde')),
+    campo('hasta ', { type: 'date' }, set('fechaEnvioHasta')),
+  ]);
+  const limpiar = el('button', { textContent: 'Limpiar filtros' });
+  limpiar.addEventListener('click', () => {
+    APP.criterios = {};
+    caja.querySelectorAll('input').forEach(i => { i.value = ''; });
+    alFiltrar();
+  });
+  caja.append(limpiar);
+  return caja;
+}
+
+function celda(r, col) {
+  if (col.clave === 'importe') {
+    return el('td', { className: 'num',
+                      textContent: r.importeTexto || '—' });
+  }
+  if (col.tipo === 'fecha') {
+    return el('td', { textContent: r[col.clave + 'Texto'] || '—' });
+  }
+  if (col.tipo === 'num') {
+    return el('td', { className: 'num', textContent: String(r[col.clave]) });
+  }
+  return el('td', { textContent: r[col.clave] || '—' });
+}
+
+function pintarTabla(filas) {
+  const visibles = COLUMNAS.filter(c => c.visible);
+  const thead = el('thead');
+  const tr = el('tr');
+  for (const col of visibles) {
+    const flecha = APP.orden.clave === col.clave
+      ? (APP.orden.ascendente ? ' ▲' : ' ▼') : '';
+    const th = el('th', { textContent: col.titulo + flecha });
+    th.addEventListener('click', () => {
+      if (APP.orden.clave === col.clave) {
+        APP.orden.ascendente = !APP.orden.ascendente;
+      } else {
+        APP.orden = { clave: col.clave, ascendente: true };
+      }
+      refrescar();
+    });
+    tr.append(th);
+  }
+  thead.append(tr);
+
+  const tbody = el('tbody');
+  for (const r of filas) {
+    tbody.append(el('tr', {}, visibles.map(col => celda(r, col))));
+  }
+  return el('table', {}, [thead, tbody]);
+}
+
+function refrescar() {
+  const filas = ordenar(filtrar(APP.registros, APP.criterios), APP.orden);
+  APP.filas = filas;
+  document.getElementById('contador').textContent =
+    `${filas.length} de ${APP.registros.length} transferencias`;
+  const cont = document.getElementById('tabla');
+  cont.textContent = '';
+  cont.append(pintarTabla(filas));
+}
+
 function pintarResultados(segundos) {
   const app = document.getElementById('app');
   app.textContent = '';
+
+  const otro = el('button', { textContent: 'Cargar otro PDF' });
+  otro.addEventListener('click', () => {
+    APP.registros = []; APP.anomalias = []; APP.criterios = {};
+    APP.orden = { clave: 'pagina', ascendente: true };
+    pintarInicio();
+  });
+
   app.append(
     el('h1', { textContent: 'Buscador de transferencias' }),
     el('p', { className: 'sub',
       textContent: `${APP.registros.length} transferencias de `
         + `${APP.nombreArchivo}, procesadas en ${segundos} s` }),
+    otro,
     panelAnomalias(),
+    pintarFiltros(refrescar),
+    el('p', { id: 'contador', className: 'sub' }),
+    el('div', { id: 'tabla' }),
   );
+  refrescar();
 }
 
 function panelAnomalias() {

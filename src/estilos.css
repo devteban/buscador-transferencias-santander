@@ -23,3 +23,19 @@ th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid var(--bor
 th { cursor: pointer; user-select: none; white-space: nowrap; }
 td.num { text-align: right; font-variant-numeric: tabular-nums; }
 .aviso { color: var(--aviso); }
+.filtros {
+  display: flex; flex-wrap: wrap; gap: 12px 18px;
+  padding: 16px; margin: 16px 0;
+  border: 1px solid var(--borde); border-radius: 8px; background: #fff;
+}
+.filtros label { display: flex; align-items: center; gap: 6px; font-size: 13px; }
+.filtros input {
+  border: 1px solid var(--borde); border-radius: 5px; padding: 4px 7px;
+  font: inherit; font-size: 13px;
+}
+.filtros input[type=search] { width: 180px; }
+.filtros input[type=number] { width: 100px; }
+.filtros button {
+  border: 1px solid var(--borde); border-radius: 5px; background: #fff;
+  padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer;
+}
