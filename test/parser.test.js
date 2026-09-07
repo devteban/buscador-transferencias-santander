@@ -21,6 +21,9 @@ test('normalizarImporte: rechaza lo que no es formato espanol', () => {
   assert.equal(normalizarImporte('1234'), null);     // sin decimales
   assert.equal(normalizarImporte(''), null);
   assert.equal(normalizarImporte(null), null);
+  assert.equal(normalizarImporte('12 3,45'), null); // espacio interno
+  assert.equal(normalizarImporte('1 2,34'), null);
+  assert.equal(normalizarImporte('9 9,00'), null);
 });
 
 test('normalizarFecha: dd-mm-aaaa a ISO', () => {

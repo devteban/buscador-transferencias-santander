@@ -7,7 +7,10 @@ const RE_FECHA = /^(\d{2})-(\d{2})-(\d{4})$/;
 
 export function normalizarImporte(texto) {
   if (typeof texto !== 'string') return null;
-  const limpio = texto.replace(/\s|EUR|[A-Z]{3}$/g, '').trim();
+  // Se recortan los extremos y el codigo de moneda, pero NUNCA los espacios
+  // internos: el texto viene de fragmentos de PDF unidos con espacios, y
+  // borrarlos convertiria "12 3,45" en un importe valido de 123,45.
+  const limpio = texto.trim().replace(/\s*[A-Z]{3}$/, '').trim();
   if (!RE_IMPORTE.test(limpio)) return null;
   const n = Number(limpio.replace(/\./g, '').replace(',', '.'));
   return Number.isFinite(n) ? n : null;
