@@ -110,14 +110,29 @@ ejecuta con `node build.js`; no requiere `npm install`, porque `node:test` y
 `fs` bastan. El usuario final nunca ejecuta el build.
 
 PDF.js se descarga una sola vez desde cdnjs a `vendor/`. Requiere red en ese
-momento y nunca más. Se usa la build *legacy* UMD, que expone un global y
-puede embeberse en línea.
+momento y nunca más.
 
-**Incógnita a despejar antes de implementar:** si PDF.js puede operar bajo
-`file://` sin worker. Es lo que hace viable el archivo único. Si la versión
-elegida no lo permite, las salidas son la build *legacy* con
-`disableWorker`, o arrancar el worker desde un `Blob` URL (que hereda origen
-y funciona bajo `file://`). Esta decisión no altera el resto del diseño.
+**Versión fijada: PDF.js 3.11.174**, build UMD (`pdf.min.js`, 312 KB, y
+`pdf.worker.min.js`, 1061 KB). Es la **última versión que publica build
+UMD**: de la 4.0 en adelante PDF.js solo distribuye módulos ES (`.mjs`), y
+un `import` de módulo no funciona bajo `file://` (origen `null`), lo que
+rompería el requisito del archivo único. La UMD expone un global y se
+embebe en línea sin ningún `import`.
+
+**Incógnita a despejar antes de implementar:** cómo arranca PDF.js su worker
+bajo `file://`. Se probarán en este orden, y la primera que funcione queda
+fijada:
+
+1. **Fake worker**: cargar `pdf.worker.min.js` como script normal, lo que
+   define `globalThis.pdfjsWorker`; PDF.js lo detecta y trabaja en el hilo
+   principal sin instanciar un `Worker`. Es la que mejor encaja con el
+   procesamiento por lotes.
+2. **Blob worker**: `GlobalWorkerOptions.workerSrc` apuntando a un
+   `URL.createObjectURL(new Blob([codigoWorker]))`.
+3. Si ninguna funciona, servir el archivo desde un servidor local
+   (`python3 -m http.server`), aceptando la pérdida del doble clic.
+
+Esta decisión no altera el resto del diseño.
 
 ## Parser
 
