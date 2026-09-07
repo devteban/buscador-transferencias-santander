@@ -97,6 +97,19 @@ function buscarLinea(lineas, subcadena) {
 }
 
 /**
+ * Indice de la linea de pie. Se identifica exigiendo que contenga LAS DOS
+ * etiquetas de fecha a la vez, y se busca desde el final: asi el texto de un
+ * concepto que mencione "Fecha operación:" no puede hacerse pasar por el pie.
+ */
+function indiceLineaPie(lineas) {
+  for (let i = lineas.length - 1; i >= 0; i--) {
+    const t = lineas[i].texto;
+    if (t.includes('Fecha operación:') && t.includes('Fecha valor:')) return i;
+  }
+  return -1;
+}
+
+/**
  * Valor que sigue a una etiqueta. Busca dentro de cada FRAGMENTO, no en el
  * texto de la linea: las tres columnas comparten linea, asi que buscar en
  * la linea entera haria que "Entidad:" devolviese tambien el contenido de
@@ -144,62 +157,73 @@ export function parsearPagina(lineas, numeroPagina) {
     extra: {},
   };
 
+  const iPie = indiceLineaPie(lineas);
+
   // --- Ancla 1: la linea con los dos ">>" ---
   const iMarca = lineas.findIndex(
     l => l.fragmentos.some(f => f.texto.includes('>>')));
   if (iMarca !== -1) {
     const lm = lineas[iMarca];
     const marcas = lm.fragmentos.filter(f => f.texto.includes('>>'));
-    const xPrimera = marcas[0].x;
-    const xSegunda = marcas.length > 1 ? marcas[1].x : Infinity;
+    // Se exigen las dos marcas. Con una sola, el "centro" absorberia al
+    // beneficiario; es preferible dejar los campos vacios y que salte la
+    // anomalia a extraer algo que podria ser incorrecto.
+    if (marcas.length >= 2) {
+      const xPrimera = marcas[0].x;
+      const xSegunda = marcas[1].x;
 
-    const izquierda = lm.fragmentos.filter(f => f.x < xPrimera);
-    const centro = lm.fragmentos.filter(
-      f => f.x > xPrimera && f.x < xSegunda && !f.texto.includes('>>'));
-    const derecha = lm.fragmentos.filter(
-      f => f.x > xSegunda && !f.texto.includes('>>'));
+      const izquierda = lm.fragmentos.filter(f => f.x < xPrimera);
+      const centro = lm.fragmentos.filter(
+        f => f.x > xPrimera && f.x < xSegunda && !f.texto.includes('>>'));
+      const derecha = lm.fragmentos.filter(
+        f => f.x > xSegunda && !f.texto.includes('>>'));
 
-    const partesOrdenante = [izquierda.map(f => f.texto).join(' ').trim()];
+      const partesOrdenante = [izquierda.map(f => f.texto).join(' ').trim()];
 
-    // Continuaciones: lineas siguientes con contenido a la izquierda del
-    // primer ">>", hasta "POR CUENTA DE:" o "Entidad:".
-    for (let i = iMarca + 1; i < lineas.length; i++) {
-      const t = lineas[i].texto;
-      if (t.includes('POR CUENTA DE:') || t.includes('Entidad:')) break;
-      const izq = lineas[i].fragmentos.filter(f => f.x < xPrimera);
-      const txt = izq.map(f => f.texto).join(' ').trim();
-      if (txt) partesOrdenante.push(txt);
+      // Etiquetas que cierran el bloque del ordenante. Sin una cota, una pagina
+      // a la que le falte alguna arrastraria el concepto y el pie dentro del
+      // nombre del ordenante, y ademas sin marcar anomalia.
+      const FIN_ORDENANTE = ['POR CUENTA DE:', 'Entidad:', 'CONCEPTO:',
+                             'IBAN:', 'Importe origen:', 'Fecha operación:'];
+      for (let i = iMarca + 1; i < lineas.length; i++) {
+        if (iPie !== -1 && i >= iPie) break;
+        const t = lineas[i].texto;
+        if (FIN_ORDENANTE.some(e => t.includes(e))) break;
+        const izq = lineas[i].fragmentos.filter(f => f.x < xPrimera);
+        const txt = izq.map(f => f.texto).join(' ').trim();
+        if (txt) partesOrdenante.push(txt);
+      }
+      const ordenante = partesOrdenante.filter(Boolean).join(' ').trim();
+      if (ordenante) reg.ordenante = ordenante;
+
+      // El importe se valida ENTERO, no con un regex parcial: sobre
+      // "1 234,56" un patron parcial capturaria "234,56" y daria por bueno
+      // un importe equivocado en vez de marcarlo como anomalia.
+      const textoCentro = centro.map(f => f.texto).join(' ').trim();
+      const mMoneda = MONEDA_FINAL.exec(textoCentro);
+      const soloImporte = mMoneda
+        ? textoCentro.slice(0, mMoneda.index).trim()
+        : textoCentro;
+      const valor = normalizarImporte(soloImporte);
+      if (valor !== null) {
+        reg.importe = valor;
+        reg.importeTexto = soloImporte;
+        reg.moneda = mMoneda ? mMoneda[1] : null;
+      }
+      const beneficiario = derecha.map(f => f.texto).join(' ').trim();
+      if (beneficiario) reg.extra.beneficiario = beneficiario;
     }
-    const ordenante = partesOrdenante.filter(Boolean).join(' ').trim();
-    if (ordenante) reg.ordenante = ordenante;
-
-    // El importe se valida ENTERO, no con un regex parcial: sobre
-    // "1 234,56" un patron parcial capturaria "234,56" y daria por bueno
-    // un importe equivocado en vez de marcarlo como anomalia.
-    const textoCentro = centro.map(f => f.texto).join(' ').trim();
-    const mMoneda = MONEDA_FINAL.exec(textoCentro);
-    const soloImporte = mMoneda
-      ? textoCentro.slice(0, mMoneda.index).trim()
-      : textoCentro;
-    const valor = normalizarImporte(soloImporte);
-    if (valor !== null) {
-      reg.importe = valor;
-      reg.importeTexto = soloImporte;
-      reg.moneda = mMoneda ? mMoneda[1] : null;
-    }
-    const beneficiario = derecha.map(f => f.texto).join(' ').trim();
-    if (beneficiario) reg.extra.beneficiario = beneficiario;
   }
 
-  // --- Ancla 2: CONCEPTO: hasta la linea de "Fecha operación:" ---
+  // --- Ancla 2: CONCEPTO: hasta la linea de pie ---
   const iConcepto = lineas.findIndex(l => l.texto.includes('CONCEPTO:'));
   if (iConcepto !== -1) {
     const partes = [];
     const mismaLinea = lineas[iConcepto].texto
       .split('CONCEPTO:')[1];
     if (mismaLinea && mismaLinea.trim()) partes.push(mismaLinea.trim());
-    for (let i = iConcepto + 1; i < lineas.length; i++) {
-      if (lineas[i].texto.includes('Fecha operación:')) break;
+    const limite = iPie === -1 ? lineas.length : iPie;
+    for (let i = iConcepto + 1; i < limite; i++) {
       const t = lineas[i].texto.trim();
       if (t) partes.push(t);
     }
@@ -207,14 +231,17 @@ export function parsearPagina(lineas, numeroPagina) {
     if (concepto) reg.concepto = concepto;
   }
 
-  // --- Fechas, cada una anclada a su etiqueta ---
+  // "Fecha de envío" vive en la cabecera; las otras dos, solo en el pie.
+  // Restringir la busqueda es lo que impide que una fecha escrita dentro del
+  // concepto se cuele como si fuera la fecha real de la operacion.
+  const lineasPie = iPie === -1 ? [] : [lineas[iPie]];
   const pares = [
-    ['fechaOperacion', 'Fecha operación:'],
-    ['fechaValor', 'Fecha valor:'],
-    ['fechaEnvio', 'Fecha de envío:'],
+    ['fechaOperacion', 'Fecha operación:', lineasPie],
+    ['fechaValor', 'Fecha valor:', lineasPie],
+    ['fechaEnvio', 'Fecha de envío:', lineas],
   ];
-  for (const [campo, etiqueta] of pares) {
-    const bruto = valorTrasEtiqueta(lineas, etiqueta, TRAS_FECHA);
+  for (const [campo, etiqueta, donde] of pares) {
+    const bruto = valorTrasEtiqueta(donde, etiqueta, TRAS_FECHA);
     const iso = normalizarFecha(bruto);
     if (iso) {
       reg[campo] = iso;

@@ -246,3 +246,36 @@ test('parsearPagina: importe en formato no espanol cuenta como faltante', () => 
   assert.equal(registro.importe, null);
   assert.deepEqual(anomalia.camposFaltantes, ['importe']);
 });
+
+test('parsearPagina: una etiqueta de fecha dentro del concepto no suplanta a la del pie', () => {
+  // El escenario peligroso de verdad: la etiqueta literal, con una fecha en
+  // el formato que el parser SI acepta.
+  const { registro: r } = parsearPagina(paginaMolde({
+    concepto: ['PAGO SEGUN Fecha operación: 09-09-2099 ACORDADA'],
+    fechaOperacion: '03-02-2025',
+  }), 1);
+  assert.equal(r.fechaOperacion, '2025-02-03');
+  assert.ok(r.concepto.includes('09-09-2099'));
+});
+
+test('parsearPagina: sin etiquetas de cierre, el ordenante no arrastra el concepto', () => {
+  const lineas = paginaMolde().filter(
+    l => !l.texto.includes('POR CUENTA DE:') && !l.texto.includes('Entidad:'));
+  const { registro: r } = parsearPagina(lineas, 1);
+  assert.equal(r.ordenante, 'AYUNTAMIENTO DE VILLARRIBA');
+  assert.ok(!r.ordenante.includes('CONCEPTO'));
+  assert.ok(!r.ordenante.includes('Refª'));
+});
+
+test('parsearPagina: con una sola marca >> no se inventa importe ni ordenante', () => {
+  const lineas = paginaMolde().map(l => {
+    const marcas = l.fragmentos.filter(f => f.texto.includes('>>'));
+    if (marcas.length < 2) return l;
+    const frags = l.fragmentos.filter(f => f !== marcas[1]);
+    return { ...l, fragmentos: frags, texto: frags.map(f => f.texto).join(' ') };
+  });
+  const { registro: r, anomalia: a } = parsearPagina(lineas, 9);
+  assert.equal(r.importe, null);
+  assert.equal(r.ordenante, null);
+  assert.equal(a.motivo, 'campos_incompletos');
+});
