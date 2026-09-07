@@ -1,0 +1,11 @@
+# ── Datos confidenciales: NUNCA versionar ──────────────────────────
+# Extractos bancarios y cualquier PDF de trabajo
+*.pdf
+# Salida del sondeo: enmascarada, pero contiene razón social y dirección
+sondeo*.txt
+
+# ── Ruido ──────────────────────────────────────────────────────────
+.DS_Store
+node_modules/
+# PDF.js se descarga con el build, no se versiona
+vendor/
