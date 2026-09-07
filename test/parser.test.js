@@ -2,8 +2,9 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizarImporte, normalizarFecha, normalizarTexto, agruparEnLineas,
+  parsearPagina,
 } from '../src/parser.js';
-import { item } from './fixtures/molde.js';
+import { item, paginaMolde } from './fixtures/molde.js';
 
 test('normalizarImporte: formato espanol con y sin miles', () => {
   assert.equal(normalizarImporte('345,00'), 345);
@@ -119,4 +120,129 @@ test('agruparEnLineas: el resultado no depende del orden de entrada', () => {
   const b = agruparEnLineas(barajado).map(l => l.texto);
   assert.deepEqual(a, b);
   assert.deepEqual(a, ['A B', 'C D']);
+});
+
+test('parsearPagina: extrae los seis campos del nucleo', () => {
+  const { registro, anomalia } = parsearPagina(paginaMolde(), 12);
+  assert.equal(anomalia, null);
+  assert.equal(registro.pagina, 12);
+  assert.equal(registro.ordenante, 'AYUNTAMIENTO DE VILLARRIBA');
+  assert.equal(registro.importe, 345);
+  assert.equal(registro.importeTexto, '345,00');
+  assert.equal(registro.moneda, 'EUR');
+  assert.equal(registro.concepto, 'ALOJAMIENTO Y ALIMENTACION');
+  assert.equal(registro.fechaOperacion, '2025-02-03');
+  assert.equal(registro.fechaValor, '2025-02-04');
+  assert.equal(registro.fechaEnvio, '2025-02-05');
+  assert.equal(registro.fechaOperacionTexto, '03-02-2025');
+});
+
+test('parsearPagina: ordenante de dos y tres lineas', () => {
+  const dos = parsearPagina(paginaMolde({
+    ordenante: ['AYUNTAMIENTO DE VILLARRIBA', 'DE LOS MONTES'],
+  }), 1).registro;
+  assert.equal(dos.ordenante, 'AYUNTAMIENTO DE VILLARRIBA DE LOS MONTES');
+
+  const tres = parsearPagina(paginaMolde({
+    ordenante: ['MANCOMUNIDAD DE MUNICIPIOS', 'DE LA COMARCA', 'DEL NORTE'],
+  }), 1).registro;
+  assert.equal(tres.ordenante,
+    'MANCOMUNIDAD DE MUNICIPIOS DE LA COMARCA DEL NORTE');
+});
+
+test('parsearPagina: concepto de varias lineas se une con espacios', () => {
+  const r = parsearPagina(paginaMolde({
+    concepto: ['ALOJAMIENTO Y ALIMENTACION', 'DE ANIMALES', 'ENERO 2025'],
+  }), 1).registro;
+  assert.equal(r.concepto,
+    'ALOJAMIENTO Y ALIMENTACION DE ANIMALES ENERO 2025');
+});
+
+test('parsearPagina: concepto en la misma linea que la etiqueta', () => {
+  const r = parsearPagina(paginaMolde({
+    conceptoPegado: true,
+    concepto: ['REPARACION DE VALLADO PERIMETRAL'],
+  }), 1).registro;
+  assert.equal(r.concepto, 'REPARACION DE VALLADO PERIMETRAL');
+});
+
+test('parsearPagina: concepto de cuatro lineas', () => {
+  const r = parsearPagina(paginaMolde({
+    concepto: ['ALOJAMIENTO Y ALIMENTACION', 'DE ANIMALES', 'RECOGIDOS EN',
+               'VIA PUBLICA'],
+  }), 1).registro;
+  assert.equal(r.concepto,
+    'ALOJAMIENTO Y ALIMENTACION DE ANIMALES RECOGIDOS EN VIA PUBLICA');
+});
+
+test('parsearPagina: las fechas dentro del concepto no se confunden con campos', () => {
+  const r = parsearPagina(paginaMolde({
+    concepto: ['FACTURA FECHA 15.01.2025', 'PERIODO 01/01/2025 A 31/01/2025'],
+    fechaOperacion: '03-02-2025',
+  }), 1).registro;
+  assert.equal(r.fechaOperacion, '2025-02-03');
+  assert.ok(r.concepto.includes('15.01.2025'));
+  assert.ok(r.concepto.includes('01/01/2025'));
+});
+
+test('parsearPagina: importe con separador de miles', () => {
+  const r = parsearPagina(paginaMolde({ importe: '12.345,67' }), 1).registro;
+  assert.equal(r.importe, 12345.67);
+  assert.equal(r.importeTexto, '12.345,67');
+});
+
+test('parsearPagina: coge el importe del marcador, no los secundarios', () => {
+  // El molde incluye "Importe origen: 345,00" y "Contravalor: 345,00".
+  const r = parsearPagina(paginaMolde({ importe: '999,99' }), 1).registro;
+  assert.equal(r.importe, 999.99);
+});
+
+test('parsearPagina: columnas desplazadas siguen parseando bien', () => {
+  const r = parsearPagina(paginaMolde({
+    desplazamiento: -8,
+    ordenante: ['AYUNTAMIENTO DE VILLABAJO', 'DE LA SIERRA'],
+  }), 1).registro;
+  assert.equal(r.ordenante, 'AYUNTAMIENTO DE VILLABAJO DE LA SIERRA');
+  assert.equal(r.importe, 345);
+});
+
+test('parsearPagina: campos de busqueda normalizados', () => {
+  const r = parsearPagina(paginaMolde({
+    ordenante: ['AYUNTAMIENTO DE ALCALÁ'],
+    concepto: ['ALOJAMIENTO Y ALIMENTACIÓN'],
+  }), 1).registro;
+  assert.equal(r.ordenanteBusqueda, 'ayuntamiento de alcala');
+  assert.equal(r.conceptoBusqueda, 'alojamiento y alimentacion');
+});
+
+test('parsearPagina: pagina sin marcador es anomalia y no da registro', () => {
+  const { registro, anomalia } = parsearPagina(
+    paginaMolde({ conMarcador: false }), 7);
+  assert.equal(registro, null);
+  assert.equal(anomalia.pagina, 7);
+  assert.equal(anomalia.motivo, 'sin_marcador');
+});
+
+test('parsearPagina: pagina vacia es anomalia sin_texto', () => {
+  const { registro, anomalia } = parsearPagina([], 3);
+  assert.equal(registro, null);
+  assert.equal(anomalia.motivo, 'sin_texto');
+});
+
+test('parsearPagina: falta un campo pero el registro se conserva', () => {
+  // Requisito del spec: una anomalia de campo no puede ocultar la fila.
+  const { registro, anomalia } = parsearPagina(
+    paginaMolde({ importe: null }), 47);
+  assert.notEqual(registro, null);
+  assert.equal(registro.importe, null);
+  assert.equal(registro.ordenante, 'AYUNTAMIENTO DE VILLARRIBA');
+  assert.equal(anomalia.motivo, 'campos_incompletos');
+  assert.deepEqual(anomalia.camposFaltantes, ['importe']);
+});
+
+test('parsearPagina: importe en formato no espanol cuenta como faltante', () => {
+  const { registro, anomalia } = parsearPagina(
+    paginaMolde({ importe: '1 234,56' }), 5);
+  assert.equal(registro.importe, null);
+  assert.deepEqual(anomalia.camposFaltantes, ['importe']);
 });
