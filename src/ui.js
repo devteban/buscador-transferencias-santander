@@ -177,9 +177,19 @@ function campo(etiqueta, props, alCambiar) {
   return el('label', {}, [etiqueta, input]);
 }
 
+// Repintar 1500 filas en cada pulsacion se nota al escribir. Se agrupa el
+// filtrado en una sola pasada tras una pausa breve.
+let temporizadorFiltro = null;
+function programarFiltrado(alFiltrar) {
+  clearTimeout(temporizadorFiltro);
+  temporizadorFiltro = setTimeout(alFiltrar, 120);
+}
+
 function pintarFiltros(alFiltrar) {
-  const c = APP.criterios;
-  const set = (k) => (v) => { c[k] = v; alFiltrar(); };
+  // Se escribe SIEMPRE sobre APP.criterios, nunca sobre una referencia
+  // capturada: el boton de limpiar reasigna APP.criterios a un objeto nuevo,
+  // y un cierre sobre el objeto antiguo dejaria los filtros sin efecto.
+  const set = (k) => (v) => { APP.criterios[k] = v; programarFiltrado(alFiltrar); };
   const caja = el('div', { className: 'filtros' }, [
     campo('Ordenante ', { type: 'search', placeholder: 'contiene…' },
           set('ordenante')),
@@ -198,6 +208,7 @@ function pintarFiltros(alFiltrar) {
   limpiar.addEventListener('click', () => {
     APP.criterios = {};
     caja.querySelectorAll('input').forEach(i => { i.value = ''; });
+    clearTimeout(temporizadorFiltro);
     alFiltrar();
   });
   caja.append(limpiar);
