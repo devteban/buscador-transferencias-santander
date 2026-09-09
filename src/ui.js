@@ -185,16 +185,33 @@ async function extraerTodo(doc, alProgresar) {
   return { registros, anomalias };
 }
 
+/**
+ * Abre el PDF pidiendo contrasena si hace falta. PDF.js avisa mediante
+ * onPassword; se reintenta hasta que el usuario cancela.
+ */
+function abrirDocumento(datos) {
+  // Sin cMapUrl ni standardFontDataUrl a proposito: sin esas URLs, PDF.js
+  // aborta internamente en vez de intentar descargar fuentes o mapas de
+  // caracteres. Es lo que garantiza que el PDF no salga de este equipo.
+  const tarea = pdfjsLib.getDocument({ data: datos });
+  tarea.onPassword = (reintentar, motivo) => {
+    const texto = motivo === pdfjsLib.PasswordResponses.INCORRECT_PASSWORD
+      ? 'Contraseña incorrecta. Inténtalo de nuevo:'
+      : 'El PDF está protegido. Introduce la contraseña:';
+    const clave = prompt(texto);
+    if (clave === null) tarea.destroy();
+    else reintentar(clave);
+  };
+  return tarea.promise;
+}
+
 async function procesar(archivo, estado, barra) {
   APP.nombreArchivo = archivo.name;
   estado.textContent = 'Abriendo el PDF...';
   barra.classList.remove('oculto');
   try {
     const datos = new Uint8Array(await archivo.arrayBuffer());
-    // Sin cMapUrl ni standardFontDataUrl a proposito: sin esas URLs, PDF.js
-    // aborta internamente en vez de intentar descargar fuentes o mapas de
-    // caracteres. Es lo que garantiza que el PDF no salga de este equipo.
-    const doc = await pdfjsLib.getDocument({ data: datos }).promise;
+    const doc = await abrirDocumento(datos);
     const t0 = performance.now();
     const { registros, anomalias } = await extraerTodo(doc, (hechas, total) => {
       estado.textContent = `Página ${hechas} de ${total}`;
@@ -207,8 +224,15 @@ async function procesar(archivo, estado, barra) {
     pintarResultados(seg);
   } catch (err) {
     barra.classList.add('oculto');
-    estado.textContent = 'No se pudo abrir: ' + err.message;
     estado.className = 'sub aviso';
+    const nombre = err && err.name;
+    if (nombre === 'PasswordException') {
+      estado.textContent = 'PDF protegido: no se introdujo la contraseña.';
+    } else if (nombre === 'InvalidPDFException') {
+      estado.textContent = 'Ese archivo no parece un PDF válido.';
+    } else {
+      estado.textContent = 'No se pudo procesar el archivo: ' + err.message;
+    }
   }
 }
 
@@ -275,8 +299,13 @@ function celda(r, col) {
   return el('td', { textContent: v || '—' });
 }
 
+/** Columnas activadas en el selector "Columnas". Puede estar vacia. */
+function columnasVisibles() {
+  return COLUMNAS.filter(c => c.visible);
+}
+
 function pintarTabla(filas) {
-  const visibles = COLUMNAS.filter(c => c.visible);
+  const visibles = columnasVisibles();
   const thead = el('thead');
   const tr = el('tr');
   for (const col of visibles) {
@@ -353,13 +382,17 @@ function refrescar() {
     `${filas.length} de ${APP.registros.length} transferencias`;
   const cont = document.getElementById('tabla');
   cont.textContent = '';
+  if (columnasVisibles().length === 0) {
+    cont.append(el('p', { className: 'aviso',
+      textContent: 'No hay ninguna columna seleccionada. Activa al menos una '
+        + 'en «Columnas» para ver los resultados.' }));
+    return;
+  }
   cont.append(pintarTabla(filas));
 }
 
-function pintarResultados(segundos) {
-  const app = document.getElementById('app');
-  app.textContent = '';
-
+/** Boton para descartar los datos actuales y volver a la pantalla inicial. */
+function botonOtroPdf() {
   const otro = el('button', { textContent: 'Cargar otro PDF' });
   otro.addEventListener('click', () => {
     clearTimeout(temporizadorFiltro);
@@ -367,10 +400,34 @@ function pintarResultados(segundos) {
     APP.orden = { clave: 'pagina', ascendente: true };
     pintarInicio();
   });
+  return otro;
+}
+
+function pintarResultados(segundos) {
+  const app = document.getElementById('app');
+  app.textContent = '';
+
+  if (APP.registros.length === 0) {
+    app.append(
+      el('h1', { textContent: 'Buscador de transferencias' }),
+      el('p', { className: 'aviso',
+        textContent: 'Ninguna página encajó en el molde esperado. '
+          + 'Puede que este PDF tenga otro formato, o que sea un escaneo '
+          + 'sin capa de texto.' }),
+      botonOtroPdf(),
+      panelAnomalias(),
+    );
+    return;
+  }
 
   const exportar = el('button', { textContent: 'Exportar CSV' });
   exportar.addEventListener('click', () => {
-    const visibles = COLUMNAS.filter(c => c.visible);
+    const visibles = columnasVisibles();
+    if (visibles.length === 0) {
+      alert('No hay ninguna columna seleccionada. Activa al menos una en '
+        + '«Columnas» para exportar.');
+      return;
+    }
     const base = APP.nombreArchivo.replace(/\.pdf$/i, '');
     descargar(`${base}-filtrado.csv`, generarCsv(APP.filas, visibles));
   });
@@ -380,7 +437,7 @@ function pintarResultados(segundos) {
     el('p', { className: 'sub',
       textContent: `${APP.registros.length} transferencias de `
         + `${APP.nombreArchivo}, procesadas en ${segundos} s` }),
-    otro,
+    botonOtroPdf(),
     panelAnomalias(),
     pintarFiltros(refrescar),
     pintarColumnas(),
