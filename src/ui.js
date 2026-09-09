@@ -2,7 +2,16 @@
 // Todo el trabajo ocurre en local; este fichero no hace ninguna peticion
 // de red, y el build garantiza que no haya ningun src externo.
 
-const APP = { registros: [], anomalias: [], nombreArchivo: '' };
+const APP = {
+  registros: [], anomalias: [], nombreArchivo: '',
+  // Se conserva una copia local para poder copiar las paginas filtradas al
+  // PDF de salida. PDF.js recibe otra copia porque puede transferir sus bytes
+  // al worker al abrir el documento.
+  datosPdf: null,
+  // Se mantiene abierto para la alternativa visual cuando el PDF original
+  // usa una estructura o cifrado que no se puede copiar directamente.
+  documentoPdf: null,
+};
 
 const COLUMNAS = [
   { clave: 'pagina', titulo: 'Pág.', tipo: 'num', visible: true },
@@ -175,6 +184,22 @@ async function extraerTodo(doc, alProgresar) {
       } catch (err) {
         anomalias.push({ pagina: n, motivo: 'error_parser',
                          camposFaltantes: [], detalle: err.message });
+        // El spec ("Paginas que no encajan") exige que error_parser NO borre
+        // la transferencia: se añade un registro minimo, con la misma forma
+        // que produce parsearPagina, para que filtrar/ordenar/generarCsv no
+        // rompan y la fila siga apareciendo (con sus campos vacios). Los
+        // campos de busqueda van a '', no a null, o los filtros de texto
+        // (que llaman .includes() sobre ellos) fallarian.
+        registros.push({
+          pagina: n,
+          ordenante: null, ordenanteBusqueda: '',
+          importe: null, importeTexto: null, moneda: null,
+          concepto: null, conceptoBusqueda: '',
+          fechaOperacion: null, fechaOperacionTexto: null,
+          fechaValor: null, fechaValorTexto: null,
+          fechaEnvio: null, fechaEnvioTexto: null,
+          extra: {},
+        });
       } finally {
         if (pagina) pagina.cleanup();
       }
@@ -206,13 +231,17 @@ function abrirDocumento(datos) {
 }
 
 async function procesar(archivo, estado, barra) {
+  if (APP.documentoPdf) APP.documentoPdf.destroy();
   APP.nombreArchivo = archivo.name;
+  APP.datosPdf = null;
+  APP.documentoPdf = null;
   estado.textContent = 'Abriendo el PDF...';
   estado.className = 'sub';
   barra.classList.remove('oculto');
   try {
-    const datos = new Uint8Array(await archivo.arrayBuffer());
-    const doc = await abrirDocumento(datos);
+    APP.datosPdf = new Uint8Array(await archivo.arrayBuffer());
+    const doc = await abrirDocumento(APP.datosPdf.slice());
+    APP.documentoPdf = doc;
     const t0 = performance.now();
     const { registros, anomalias } = await extraerTodo(doc, (hechas, total) => {
       estado.textContent = `Página ${hechas} de ${total}`;
@@ -235,9 +264,18 @@ async function procesar(archivo, estado, barra) {
       // No se interpola err.message: PDF.js reenvuelve cualquier excepcion
       // interna conservando su texto, que puede incluir detalles del
       // documento. Solo se muestra el nombre de la clase de error.
+      // Este catch generico es tambien donde caeria un fallo al arrancar el
+      // worker de PDF.js (es getDocument quien lo arranca), asi que se repite
+      // aqui la alternativa del servidor local: pintarInicio() solo la
+      // menciona cuando pdfjsLib ni siquiera llega a definirse, y ese no es
+      // el unico punto en el que ese fallo puede aparecer.
       estado.textContent = 'No se pudo procesar este PDF. Puede estar dañado '
         + 'o tener un formato que la herramienta no reconoce. '
-        + `(${err && err.name ? err.name : 'error desconocido'})`;
+        + `(${err && err.name ? err.name : 'error desconocido'}) `
+        + 'Si el problema persiste, puede deberse a que el navegador bloquea '
+        + 'el arranque del motor de PDF al abrir el archivo directamente: '
+        + 'prueba a servir la carpeta con python3 -m http.server, y abre '
+        + 'http://localhost:8000/buscador.html';
     }
   }
 }
@@ -286,11 +324,25 @@ function pintarFiltros(alFiltrar) {
   return caja;
 }
 
+/**
+ * Texto del importe principal, con el codigo de moneda anadido cuando NO es
+ * EUR. Sin esto, una transferencia en divisa (por ejemplo "1.200,00 USD")
+ * se pintaria igual que una en euros: un error de lectura silencioso. El
+ * molde real solo incluye "Cambio aplicado origen:" y "Contravalor:" para
+ * transferencias en divisa, asi que la variante es previsible en 1500
+ * paginas y contamina ademas sumas y filtros por rango si no se distingue.
+ */
+function textoImporte(r) {
+  if (r.importeTexto == null) return null;
+  if (r.moneda && r.moneda !== 'EUR') return `${r.importeTexto} ${r.moneda}`;
+  return r.importeTexto;
+}
+
 function celda(r, col) {
   const v = valorColumna(r, col);
   if (col.clave === 'importe') {
     return el('td', { className: 'num',
-                      textContent: r.importeTexto || '—' });
+                      textContent: textoImporte(r) || '—' });
   }
   if (col.tipo === 'fecha') {
     return el('td', { textContent: r[col.clave + 'Texto'] || '—' });
@@ -362,7 +414,7 @@ function generarCsv(filas, columnas) {
   const lineas = [columnas.map(c => escapar(c.titulo)).join(';')];
   for (const r of filas) {
     lineas.push(columnas.map(col => {
-      if (col.clave === 'importe') return escapar(r.importeTexto);
+      if (col.clave === 'importe') return escapar(textoImporte(r));
       if (col.tipo === 'moneda') return escapar(formatearImporte(valorColumna(r, col)));
       if (col.tipo === 'fecha') return escapar(r[col.clave + 'Texto']);
       return escapar(valorColumna(r, col));
@@ -371,14 +423,131 @@ function generarCsv(filas, columnas) {
   return '﻿' + lineas.join('\r\n');
 }
 
-function descargar(nombre, contenido) {
+function descargar(nombre, contenido, tipo) {
   const url = URL.createObjectURL(
-    new Blob([contenido], { type: 'text/csv;charset=utf-8' }));
+    new Blob([contenido], { type: tipo }));
   const a = el('a', { href: url, download: nombre });
   document.body.append(a);
   a.click();
   a.remove();
   URL.revokeObjectURL(url);
+}
+
+function paginasDeFilas(filas) {
+  return [...new Set(filas.map(r => r.pagina))];
+}
+
+function blobDeCanvas(canvas) {
+  return new Promise((resolver, rechazar) => {
+    canvas.toBlob(blob => {
+      if (blob) resolver(blob);
+      else rechazar(new Error('No se pudo codificar la página.'));
+    }, 'image/jpeg', 0.92);
+  });
+}
+
+/**
+ * Alternativa para PDF cifrados o con una estructura que pdf-lib no admite.
+ * PDF.js ya los ha abierto localmente: se dibujan sus paginas seleccionadas
+ * en buena resolucion y se empaquetan de nuevo. El resultado es visual (no
+ * conserva el texto seleccionable), pero contiene exactamente las paginas
+ * solicitadas y no sale nunca del navegador.
+ */
+async function generarPdfVisual(filas, alProgresar) {
+  if (!APP.documentoPdf) throw new Error('Documento no disponible.');
+  const salida = await PDFLib.PDFDocument.create();
+  const canvas = document.createElement('canvas');
+  const contexto = canvas.getContext('2d', { alpha: false });
+  if (!contexto) throw new Error('No se pudo crear el lienzo.');
+  const numeros = paginasDeFilas(filas);
+
+  for (let i = 0; i < numeros.length; i++) {
+    const pagina = await APP.documentoPdf.getPage(numeros[i]);
+    try {
+      const tamanoPdf = pagina.getViewport({ scale: 1 });
+      const tamanoRender = pagina.getViewport({ scale: 1.5 });
+      canvas.width = Math.ceil(tamanoRender.width);
+      canvas.height = Math.ceil(tamanoRender.height);
+      contexto.fillStyle = '#fff';
+      contexto.fillRect(0, 0, canvas.width, canvas.height);
+      await pagina.render({ canvasContext: contexto, viewport: tamanoRender }).promise;
+      const imagen = await salida.embedJpg(await (await blobDeCanvas(canvas)).arrayBuffer());
+      const destino = salida.addPage([tamanoPdf.width, tamanoPdf.height]);
+      destino.drawImage(imagen, {
+        x: 0, y: 0, width: tamanoPdf.width, height: tamanoPdf.height,
+      });
+    } finally {
+      pagina.cleanup();
+    }
+    alProgresar(i + 1, numeros.length);
+    await respirar();
+  }
+  return salida.save();
+}
+
+/**
+ * Copia las paginas filtradas sin rasterizarlas. Si no es posible (por
+ * ejemplo, por el cifrado del original), usa una copia visual como respaldo.
+ * En ambos casos las paginas quedan en el mismo orden que la tabla.
+ */
+async function exportarPdfFiltrado(filas, boton) {
+  if (!APP.datosPdf || typeof PDFLib === 'undefined') {
+    alert('No se pudo preparar el PDF para exportar. Vuelve a cargar el archivo.');
+    return;
+  }
+  if (filas.length === 0) {
+    alert('No hay resultados filtrados para exportar.');
+    return;
+  }
+
+  const textoOriginal = boton.textContent;
+  boton.disabled = true;
+  boton.textContent = 'Preparando PDF…';
+  let errorCopiaDirecta = null;
+  try {
+    // pdf-lib rechaza los PDF cifrados en vez de producir una copia que no
+    // pueda abrirse. El catch traduce ese caso a un aviso sin datos privados.
+    let contenido;
+    let copiaVisual = false;
+    try {
+      const origen = await PDFLib.PDFDocument.load(APP.datosPdf);
+      const salida = await PDFLib.PDFDocument.create();
+      const paginas = await salida.copyPages(origen,
+        paginasDeFilas(filas).map(n => n - 1));
+      paginas.forEach(pagina => salida.addPage(pagina));
+      contenido = await salida.save();
+    } catch (error) {
+      errorCopiaDirecta = error;
+      copiaVisual = true;
+      boton.textContent = 'Preparando copia visual…';
+      contenido = await generarPdfVisual(filas, (hechas, total) => {
+        boton.textContent = `Preparando PDF ${hechas}/${total}…`;
+      });
+    }
+    const base = APP.nombreArchivo.replace(/\.pdf$/i, '');
+    descargar(`${base}-filtrado.pdf`, contenido, 'application/pdf');
+    if (copiaVisual) {
+      alert('Se ha exportado una copia visual porque el PDF original no '
+        + 'permitía copiar sus páginas directamente.');
+    }
+  } catch (error) {
+    // Los mensajes de las bibliotecas pueden contener metadatos del extracto.
+    // Solo se muestra el nombre de la clase de error, suficiente para saber
+    // si fallo la copia directa o su alternativa visual sin filtrar datos.
+    const nombre = error && error.name ? error.name : 'error desconocido';
+    const directa = errorCopiaDirecta && errorCopiaDirecta.name
+      ? ` La copia directa falló con ${errorCopiaDirecta.name}.` : '';
+    // En una ReferenceError el motor solo nombra el identificador ausente,
+    // no datos del PDF. Se incluye para poder corregir incompatibilidades de
+    // navegador sin exponer el mensaje de las bibliotecas PDF.
+    const referencia = nombre === 'ReferenceError' && error.message
+      ? ` Falta: ${error.message}.` : '';
+    alert(`No se pudo crear la copia visual del PDF (${nombre}).${referencia}`
+      + directa);
+  } finally {
+    boton.disabled = false;
+    boton.textContent = textoOriginal;
+  }
 }
 
 function refrescar() {
@@ -403,6 +572,9 @@ function botonOtroPdf() {
   otro.addEventListener('click', () => {
     clearTimeout(temporizadorFiltro);
     APP.registros = []; APP.anomalias = []; APP.criterios = {};
+    APP.datosPdf = null;
+    if (APP.documentoPdf) APP.documentoPdf.destroy();
+    APP.documentoPdf = null;
     APP.orden = { clave: 'pagina', ascendente: true };
     pintarInicio();
   });
@@ -435,7 +607,13 @@ function pintarResultados(segundos) {
       return;
     }
     const base = APP.nombreArchivo.replace(/\.pdf$/i, '');
-    descargar(`${base}-filtrado.csv`, generarCsv(APP.filas, visibles));
+    descargar(`${base}-filtrado.csv`, generarCsv(APP.filas, visibles),
+              'text/csv;charset=utf-8');
+  });
+
+  const exportarPdf = el('button', { textContent: 'Exportar PDF' });
+  exportarPdf.addEventListener('click', () => {
+    exportarPdfFiltrado(APP.filas, exportarPdf);
   });
 
   app.append(
@@ -449,6 +627,7 @@ function pintarResultados(segundos) {
     pintarColumnas(),
     el('p', { id: 'contador', className: 'sub' }),
     exportar,
+    exportarPdf,
     el('div', { id: 'tabla' }),
   );
   refrescar();

@@ -114,14 +114,52 @@ function indiceLineaPie(lineas) {
  * texto de la linea: las tres columnas comparten linea, asi que buscar en
  * la linea entera haria que "Entidad:" devolviese tambien el contenido de
  * las columnas de al lado. Un fragmento equivale a una celda.
+ *
+ * `excluir`, si se da, descarta cualquier fragmento que contenga esa
+ * subcadena antes de buscar la etiqueta. Existe por "POR CUENTA DE:": en el
+ * molde real esa etiqueta va vacia, y sin excluir "GASTOS POR CUENTA DE:"
+ * (que la contiene como subcadena) la busqueda seguiria hasta ese fragmento
+ * y devolveria el valor de un campo distinto.
  */
-function valorTrasEtiqueta(lineas, etiqueta, patron) {
+function valorTrasEtiqueta(lineas, etiqueta, patron, excluir) {
   for (const l of lineas) {
     for (const f of l.fragmentos) {
+      if (excluir && f.texto.includes(excluir)) continue;
       const i = f.texto.indexOf(etiqueta);
       if (i === -1) continue;
       const m = patron.exec(f.texto.slice(i + etiqueta.length));
       if (m) return m[1];
+    }
+  }
+  return null;
+}
+
+/**
+ * "Oficina:" es un caso especial: en el molde real la etiqueta va sola en
+ * su fragmento (nunca con el valor pegado) y el valor cae en la linea
+ * siguiente, en la misma columna. valorTrasEtiqueta no sirve aqui porque
+ * busca dentro del MISMO fragmento que la etiqueta; hace falta mirar la
+ * linea de debajo.
+ *
+ * Se tolera tambien el caso "etiqueta y valor en la misma linea" por si
+ * alguna variante del molde lo trae asi, pero el caso real observado es el
+ * de dos lineas.
+ */
+function extraerOficina(lineas) {
+  for (let i = 0; i < lineas.length; i++) {
+    for (const f of lineas[i].fragmentos) {
+      const idx = f.texto.indexOf('Oficina:');
+      if (idx === -1) continue;
+      const mismaLinea = f.texto.slice(idx + 'Oficina:'.length).trim();
+      if (mismaLinea) return mismaLinea;
+      if (i + 1 >= lineas.length) return null;
+      // Misma columna: fragmentos de la linea siguiente cuya X esta cerca
+      // de la X de la etiqueta (tolerancia generosa porque las columnas se
+      // desplazan un poco entre paginas, ver "desplazamiento" en el molde).
+      const columna = lineas[i + 1].fragmentos.filter(
+        g => Math.abs(g.x - f.x) < 100);
+      const valor = columna.map(g => g.texto).join(' ').trim();
+      return valor || null;
     }
   }
   return null;
@@ -183,6 +221,12 @@ export function parsearPagina(lineas, numeroPagina) {
       // Etiquetas que cierran el bloque del ordenante. Sin una cota, una pagina
       // a la que le falte alguna arrastraria el concepto y el pie dentro del
       // nombre del ordenante, y ademas sin marcar anomalia.
+      // 'IBAN:' e 'Importe origen:' NO son redundantes con 'POR CUENTA DE:'
+      // y 'Entidad:' aunque en el molde observado siempre aparezcan juntas:
+      // son el respaldo. Si a una pagina le falta 'POR CUENTA DE:' (la
+      // revision confirmo que en el molde real esa etiqueta va vacia, ver
+      // ARREGLO 2), es 'IBAN:' quien corta el bloque del ordenante a tiempo
+      // y evita que arrastre media pagina.
       const FIN_ORDENANTE = ['POR CUENTA DE:', 'Entidad:', 'CONCEPTO:',
                              'IBAN:', 'Importe origen:', 'Fecha operación:'];
       for (let i = iMarca + 1; i < lineas.length; i++) {
@@ -256,14 +300,21 @@ export function parsearPagina(lineas, numeroPagina) {
     ['iban', 'IBAN:', /^\s*([A-Z]{2}[\d\s]{10,})/],
     ['titular', 'Titular:', /^\s*(.+?)\s*$/],
     ['entidad', 'Entidad:', /^\s*(.+?)\s*$/],
-    ['oficina', 'Oficina:', /^\s*(.+?)\s*$/],
-    ['porCuentaDe', 'POR CUENTA DE:', /^\s*(.+?)\s*$/],
+    // 'GASTOS POR CUENTA DE:' contiene 'POR CUENTA DE:' como subcadena; en
+    // el molde real esta ultima va vacia, asi que sin excluir la primera la
+    // busqueda seguiria hasta ella y devolveria "COMPARTIDOS" (el valor de
+    // otro campo) en vez de dejar porCuentaDe sin rellenar.
+    ['porCuentaDe', 'POR CUENTA DE:', /^\s*(.+?)\s*$/, 'GASTOS POR CUENTA DE:'],
     ['nuestraRef', 'Nuestra Refª:', /^\s*(.+?)(?=Fecha operación:|$)/],
   ];
-  for (const [clave, etiqueta, patron] of ETIQUETAS_EXTRA) {
-    const v = valorTrasEtiqueta(lineas, etiqueta, patron);
+  for (const [clave, etiqueta, patron, excluir] of ETIQUETAS_EXTRA) {
+    const v = valorTrasEtiqueta(lineas, etiqueta, patron, excluir);
     if (v && v.trim()) reg.extra[clave] = v.trim();
   }
+  // 'Oficina:' se extrae aparte: en el molde real la etiqueta va sola y el
+  // valor esta en la linea siguiente (ver extraerOficina).
+  const oficina = extraerOficina(lineas);
+  if (oficina) reg.extra.oficina = oficina;
 
   const IMPORTES_EXTRA = [
     ['importeOrigen', 'Importe origen:'],

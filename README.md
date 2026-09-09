@@ -10,6 +10,14 @@ dependencia externa en tiempo de uso.
 Abre `buscador.html` con doble clic y suelta el PDF encima de la ventana.
 Nada más que instalar, nada que configurar.
 
+### Uso sencillo en Windows con actualizaciones
+
+Si se ha publicado el repositorio en GitHub y el ordenador tiene Git
+instalado, basta con enviar el archivo `Abrir-buscador.bat`. Al hacer doble
+clic, descarga la aplicación la primera vez en la carpeta personal
+`Buscador de transferencias`; en las siguientes ocasiones busca una versión
+nueva y abre el buscador. No hay que usar la terminal.
+
 - El PDF **no sale de tu equipo**: se procesa entero en el navegador con
   PDF.js. `buscador.html` no hace ninguna petición de red — puedes
   comprobarlo en las herramientas de desarrollo del navegador, la pestaña
@@ -40,6 +48,12 @@ esa tabla:
   visible en ese momento (columnas ocultas no se incluyen). El CSV usa `;`
   como separador y BOM UTF-8 porque Excel en español, con `,` y sin BOM,
   mete todo en una sola columna y rompe los acentos.
+- **Exportar PDF**: descarga un PDF formado únicamente por las páginas que
+  corresponden a los resultados filtrados, en el orden actual de la tabla.
+  Conserva las páginas originales (no las convierte en imágenes) y se genera
+  íntegramente en el navegador. Si el PDF de origen está cifrado o no permite
+  copiar sus páginas directamente, crea automáticamente una copia visual de
+  las páginas filtradas.
 
 ## El panel de anomalías
 
@@ -64,6 +78,8 @@ curl -fSL -o vendor/pdf.min.js \
   https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js
 curl -fSL -o vendor/pdf.worker.min.js \
   https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js
+curl -fSL -o vendor/pdf-lib.min.js \
+  https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js
 
 node --test test/*.test.js   # 38 tests: test/parser.test.js + test/integracion.test.js
 node build.js                 # genera buscador.html a partir de src/
