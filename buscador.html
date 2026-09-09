@@ -45,6 +45,10 @@ td.num { text-align: right; font-variant-numeric: tabular-nums; }
   border: 1px solid var(--borde); border-radius: 5px; background: #fff;
   padding: 5px 12px; font: inherit; font-size: 13px; cursor: pointer;
 }
+.columnas { display: flex; flex-wrap: wrap; gap: 8px 16px; padding: 10px 0; }
+.columnas label { font-size: 13px; display: flex; align-items: center; gap: 4px; }
+details { margin: 12px 0; }
+summary { cursor: pointer; }
 
 </style>
 <body>
@@ -399,6 +403,28 @@ const COLUMNAS = [
   { clave: 'fechaEnvio', titulo: 'F. envío', tipo: 'fecha', visible: true },
 ];
 
+COLUMNAS.push(
+  { clave: 'beneficiario', titulo: 'Beneficiario', tipo: 'texto',
+    visible: false, extra: true },
+  { clave: 'iban', titulo: 'IBAN', tipo: 'texto', visible: false, extra: true },
+  { clave: 'titular', titulo: 'Titular', tipo: 'texto', visible: false, extra: true },
+  { clave: 'entidad', titulo: 'Entidad', tipo: 'texto', visible: false, extra: true },
+  { clave: 'oficina', titulo: 'Oficina', tipo: 'texto', visible: false, extra: true },
+  { clave: 'nuestraRef', titulo: 'Nuestra Refª', tipo: 'texto',
+    visible: false, extra: true },
+  { clave: 'importeOrigen', titulo: 'Importe origen', tipo: 'moneda',
+    visible: false, extra: true },
+  { clave: 'importeRecibido', titulo: 'Importe recibido', tipo: 'moneda',
+    visible: false, extra: true },
+  { clave: 'contravalor', titulo: 'Contravalor', tipo: 'moneda',
+    visible: false, extra: true },
+);
+
+/** Valor de una columna, venga del registro o de registro.extra. */
+function valorColumna(r, col) {
+  return col.extra ? (r.extra[col.clave] ?? null) : r[col.clave];
+}
+
 APP.criterios = {};
 APP.orden = { clave: 'pagina', ascendente: true };
 
@@ -432,12 +458,15 @@ function filtrar(registros, c) {
 }
 
 function ordenar(registros, { clave, ascendente }) {
+  const col = COLUMNAS.find(c => c.clave === clave);
   const signo = ascendente ? 1 : -1;
   return [...registros].sort((a, b) => {
-    const va = a[clave], vb = b[clave];
-    if (va === null && vb === null) return 0;
-    if (va === null) return 1;   // los vacios siempre al final
-    if (vb === null) return -1;
+    const va = valorColumna(a, col), vb = valorColumna(b, col);
+    const na = va === null || va === undefined;
+    const nb = vb === null || vb === undefined;
+    if (na && nb) return 0;
+    if (na) return 1;   // los vacios siempre al final
+    if (nb) return -1;
     if (va < vb) return -signo;
     if (va > vb) return signo;
     return 0;
@@ -451,6 +480,22 @@ function el(tag, props = {}, hijos = []) {
     n.append(h instanceof Node ? h : document.createTextNode(h));
   }
   return n;
+}
+
+/**
+ * Numero a formato espanol: punto para los miles, coma para los decimales.
+ * Los importes secundarios se guardan como numero (para poder filtrar y
+ * ordenar) y se formatean aqui, en la presentacion. El importe principal no
+ * pasa por aqui: conserva importeTexto, el literal del PDF.
+ */
+function formatearImporte(n) {
+  if (n === null || n === undefined || !Number.isFinite(n)) return null;
+  // useGrouping: true es necesario a proposito: en 'es-ES', Intl no agrupa
+  // por millares los numeros de cuatro cifras por defecto (p.ej. 1234,56
+  // en vez de 1.234,56), y aqui se quiere el agrupado siempre.
+  return n.toLocaleString('es-ES', {
+    minimumFractionDigits: 2, maximumFractionDigits: 2, useGrouping: true,
+  });
 }
 
 function pintarInicio() {
@@ -601,6 +646,7 @@ function pintarFiltros(alFiltrar) {
 }
 
 function celda(r, col) {
+  const v = valorColumna(r, col);
   if (col.clave === 'importe') {
     return el('td', { className: 'num',
                       textContent: r.importeTexto || '—' });
@@ -608,10 +654,14 @@ function celda(r, col) {
   if (col.tipo === 'fecha') {
     return el('td', { textContent: r[col.clave + 'Texto'] || '—' });
   }
-  if (col.tipo === 'num') {
-    return el('td', { className: 'num', textContent: String(r[col.clave]) });
+  if (col.tipo === 'moneda') {
+    return el('td', { className: 'num', textContent: formatearImporte(v) || '—' });
   }
-  return el('td', { textContent: r[col.clave] || '—' });
+  if (col.tipo === 'num' || col.tipo === 'importe') {
+    return el('td', { className: 'num',
+                      textContent: v === null || v === undefined ? '—' : String(v) });
+  }
+  return el('td', { textContent: v || '—' });
 }
 
 function pintarTabla(filas) {
@@ -641,6 +691,50 @@ function pintarTabla(filas) {
   return el('table', {}, [thead, tbody]);
 }
 
+function pintarColumnas() {
+  const det = el('details');
+  det.append(el('summary', { textContent: 'Columnas' }));
+  const caja = el('div', { className: 'columnas' });
+  for (const col of COLUMNAS) {
+    const cb = el('input', { type: 'checkbox', checked: col.visible });
+    cb.addEventListener('change', () => { col.visible = cb.checked; refrescar(); });
+    caja.append(el('label', {}, [cb, ' ' + col.titulo]));
+  }
+  det.append(caja);
+  return det;
+}
+
+/**
+ * CSV para Excel en espanol: separador ';' y BOM UTF-8. Con ',' y sin BOM,
+ * Excel mete todo en una columna y rompe los acentos.
+ */
+function generarCsv(filas, columnas) {
+  const escapar = v => {
+    const s = v === null || v === undefined ? '' : String(v);
+    return /[";\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s;
+  };
+  const lineas = [columnas.map(c => escapar(c.titulo)).join(';')];
+  for (const r of filas) {
+    lineas.push(columnas.map(col => {
+      if (col.clave === 'importe') return escapar(r.importeTexto);
+      if (col.tipo === 'moneda') return escapar(formatearImporte(valorColumna(r, col)));
+      if (col.tipo === 'fecha') return escapar(r[col.clave + 'Texto']);
+      return escapar(valorColumna(r, col));
+    }).join(';'));
+  }
+  return '﻿' + lineas.join('\r\n');
+}
+
+function descargar(nombre, contenido) {
+  const url = URL.createObjectURL(
+    new Blob([contenido], { type: 'text/csv;charset=utf-8' }));
+  const a = el('a', { href: url, download: nombre });
+  document.body.append(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 function refrescar() {
   const filas = ordenar(filtrar(APP.registros, APP.criterios), APP.orden);
   APP.filas = filas;
@@ -657,9 +751,17 @@ function pintarResultados(segundos) {
 
   const otro = el('button', { textContent: 'Cargar otro PDF' });
   otro.addEventListener('click', () => {
+    clearTimeout(temporizadorFiltro);
     APP.registros = []; APP.anomalias = []; APP.criterios = {};
     APP.orden = { clave: 'pagina', ascendente: true };
     pintarInicio();
+  });
+
+  const exportar = el('button', { textContent: 'Exportar CSV' });
+  exportar.addEventListener('click', () => {
+    const visibles = COLUMNAS.filter(c => c.visible);
+    const base = APP.nombreArchivo.replace(/\.pdf$/i, '');
+    descargar(`${base}-filtrado.csv`, generarCsv(APP.filas, visibles));
   });
 
   app.append(
@@ -670,7 +772,9 @@ function pintarResultados(segundos) {
     otro,
     panelAnomalias(),
     pintarFiltros(refrescar),
+    pintarColumnas(),
     el('p', { id: 'contador', className: 'sub' }),
+    exportar,
     el('div', { id: 'tabla' }),
   );
   refrescar();
