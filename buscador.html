@@ -597,6 +597,7 @@ function abrirDocumento(datos) {
 async function procesar(archivo, estado, barra) {
   APP.nombreArchivo = archivo.name;
   estado.textContent = 'Abriendo el PDF...';
+  estado.className = 'sub';
   barra.classList.remove('oculto');
   try {
     const datos = new Uint8Array(await archivo.arrayBuffer());
@@ -620,7 +621,12 @@ async function procesar(archivo, estado, barra) {
     } else if (nombre === 'InvalidPDFException') {
       estado.textContent = 'Ese archivo no parece un PDF válido.';
     } else {
-      estado.textContent = 'No se pudo procesar el archivo: ' + err.message;
+      // No se interpola err.message: PDF.js reenvuelve cualquier excepcion
+      // interna conservando su texto, que puede incluir detalles del
+      // documento. Solo se muestra el nombre de la clase de error.
+      estado.textContent = 'No se pudo procesar este PDF. Puede estar dañado '
+        + 'o tener un formato que la herramienta no reconoce. '
+        + `(${err && err.name ? err.name : 'error desconocido'})`;
     }
   }
 }
