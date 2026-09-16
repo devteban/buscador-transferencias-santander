@@ -444,10 +444,26 @@ Esta es la tarea central: extraer varios registros de una sola página.
 - Modify: `src/parser.js` (añadir al final)
 
 **Interfaces:**
-- Consumes: `agruparEnLineas`, `normalizarImporte`, `normalizarFecha`, `normalizarTexto`, `tolerenciaAdaptativa` (Tasks 1-2); `item` (de `test/fixtures/molde.js`, ya existente)
+- Consumes: `normalizarImporte`, `normalizarFecha`, `normalizarTexto` (Task 1); `linea` (de `test/fixtures/molde.js`, ya existente — NO `agruparEnLineas`/`tolerenciaAdaptativa`: ver nota más abajo)
 - Produces:
   - `parsearPaginaMovimientos(lineas, numeroPagina, archivo) -> { registros: Registro[], anomalias: Anomalia[] }`
-  - Añade a `test/fixtures/molde.js`: `filaMovimientos(y, opciones)`, `paginaMovimientos(filas, opciones)`
+  - Añade a `test/fixtures/molde.js`: `filaMovimientos(y, opciones)`, `paginaMovimientos(filas, opciones)` — ambas devuelven **`Linea[]` ya agrupadas** (la misma forma que produce `agruparEnLineas`, y la misma que ya usa `paginaMolde` para el formato 1), no fragmentos en bruto de PDF.js
+
+**Nota de diseño (corregida tras un intento de implementación real):** la
+primera versión de este fixture construía fragmentos en bruto y los pasaba
+por `agruparEnLineas`/`tolerenciaAdaptativa` para reconstruir las líneas,
+igual que hará la interfaz en producción. Eso resultó frágil para *tests
+unitarios* con pocas filas sintéticas: `tolerenciaAdaptativa` exige al menos
+6 coordenadas Y distintas para tener evidencia (una sola fila nunca las
+alcanza, y con 2-3 filas más un título y una cabecera, los saltos grandes
+del título compiten con los de las filas y pueden desviar el cálculo). Y
+`parsearPaginaMovimientos` recibe **líneas ya agrupadas**, no fragmentos en
+bruto — igual que `parsearPagina` (formato 1). Probar esta función con
+líneas construidas directamente (vía `linea()`, como ya hace `paginaMolde`)
+es el nivel de abstracción correcto para un test unitario: prueba la
+EXTRACCIÓN de campos, no la reconstrucción geométrica de líneas, que ya
+tiene sus propios tests (Task 2) y su propia prueba de integración con la
+geometría real de un PDF generado (Task 4).
 
 - [ ] **Step 1: Escribir el constructor de fixtures**
 
@@ -455,59 +471,55 @@ Añadir al final de `test/fixtures/molde.js`:
 
 ```js
 /**
- * Fragmentos de UNA fila de un listado de movimientos, reproduciendo la
- * geometria real: la fila se reparte en dos sub-alturas de PDF.js (salto
- * 3.6, menor que la fuente) y las filas entre si van separadas ~10.2
- * (mayor que la fuente). Sin esta geometria el fixture no ejercitaria el
- * problema que motivo el diseno: con la tolerancia por defecto de
- * agruparEnLineas, la fila se parte en dos lineas y el parser no la ve.
+ * UNA fila de un listado de movimientos, ya como Linea reconstruida (no
+ * como fragmentos en bruto de PDF.js): parsearPaginaMovimientos recibe
+ * lineas, igual que parsearPagina (formato 1) recibe las que construye
+ * paginaMolde. La geometria real del documento (fuente pequena, fila
+ * partida en dos sub-alturas) es asunto de agruparEnLineas/
+ * tolerenciaAdaptativa (Task 2, ya verificadas contra el documento real por
+ * separado) y de la prueba de integracion (Task 4, con un PDF generado que
+ * SI reproduce esa geometria); aqui no hace falta reproducirla para probar
+ * la extraccion de campos de una fila ya bien formada.
  *
  * Todos los valores son inventados.
  */
-export function filaMovimientos(yBase, opciones = {}) {
+export function filaMovimientos(y, opciones = {}) {
   const o = {
     fechaOperacion: '16/03/2025',
     fechaValor: '17/03/2025',
     descripcion: 'Transferencia De Ayuntamiento De Villarriba, Concepto Servicio 123',
     importe: '1.234,56',
-    alturaFuente: 4.68,
     ...opciones,
   };
-  const frags = [
-    item(20, yBase, o.fechaOperacion, o.alturaFuente),
-    item(90, yBase, o.fechaValor, o.alturaFuente),
-  ];
-  if (o.descripcion) frags.push(item(160, yBase - 3.6, o.descripcion, o.alturaFuente));
-  if (o.importe !== null) frags.push(item(600, yBase - 3.6, o.importe, o.alturaFuente));
-  return frags;
+  const pares = [20, o.fechaOperacion, 90, o.fechaValor];
+  if (o.descripcion) pares.push(160, o.descripcion);
+  if (o.importe !== null) pares.push(600, o.importe);
+  return linea(y, ...pares);
 }
 
 /**
- * Pagina sintetica de listado de movimientos: titulo, cabecera de columnas
- * (solo en la primera pagina del documento, como en el molde real) y N
- * filas separadas ~10.2. `filas` es un array de opciones para
- * `filaMovimientos` (una entrada por fila).
+ * Pagina sintetica de listado de movimientos, ya como array de Lineas:
+ * titulo, cabecera de columnas (solo si conCabecera, como en el molde real,
+ * que solo la repite en la primera pagina del documento) y N filas.
+ * `filas` es un array de opciones para filaMovimientos (una entrada por
+ * fila).
  */
 export function paginaMovimientos(filas, opciones = {}) {
   const o = { conCabecera: true, ...opciones };
-  const items = [];
+  const lineas = [];
   let y = 760;
   if (o.conCabecera) {
-    items.push(...[
-      item(20, y, 'Movimientos cuenta desde 01/01/2025 hasta 31/12/2025'),
-    ]);
+    lineas.push(linea(y, 20, 'Movimientos cuenta desde 01/01/2025 hasta 31/12/2025'));
     y -= 20;
-    items.push(
-      item(20, y, 'Fecha Operacion'), item(90, y, 'Fecha Valor'),
-      item(160, y, 'Concepto'), item(600, y, 'Importe'),
-    );
+    lineas.push(linea(y, 20, 'Fecha Operacion', 90, 'Fecha Valor',
+                       160, 'Concepto', 600, 'Importe'));
     y -= 20;
   }
   for (const opcionesFila of filas) {
-    items.push(...filaMovimientos(y, opcionesFila));
-    y -= 10.2;
+    lineas.push(filaMovimientos(y, opcionesFila));
+    y -= 12;
   }
-  return items;
+  return lineas;
 }
 ```
 
@@ -518,22 +530,13 @@ Crear `test/parser-movimientos.test.js`:
 ```js
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import {
-  agruparEnLineas, tolerenciaAdaptativa, parsearPaginaMovimientos,
-} from '../src/parser.js';
-import { filaMovimientos, paginaMovimientos } from './fixtures/molde.js';
-
-/** Agrupa con la tolerancia adaptativa de la propia pagina, como hace
- * parsearPaginaAuto (Task 4) antes de llamar a parsearPaginaMovimientos. */
-function lineasDe(items) {
-  const tol = tolerenciaAdaptativa(items);
-  return agruparEnLineas(items, tol !== null ? { tolerancia: tol } : undefined);
-}
+import { parsearPaginaMovimientos } from '../src/parser.js';
+import { paginaMovimientos } from './fixtures/molde.js';
 
 test('parsearPaginaMovimientos: extrae los cuatro campos del nucleo de una fila', () => {
-  const items = paginaMovimientos([{}]); // una fila con los valores por defecto
+  const lineas = paginaMovimientos([{}]); // una fila con los valores por defecto
   const { registros, anomalias } = parsearPaginaMovimientos(
-    lineasDe(items), 5, 'extracto.pdf');
+    lineas, 5, 'extracto.pdf');
   assert.equal(anomalias.length, 0);
   assert.equal(registros.length, 1);
   const r = registros[0];
@@ -553,11 +556,10 @@ test('parsearPaginaMovimientos: extrae los cuatro campos del nucleo de una fila'
 });
 
 test('parsearPaginaMovimientos: varias filas dan varios registros con fila incremental', () => {
-  const items = paginaMovimientos([
+  const lineas = paginaMovimientos([
     { importe: '100,00' }, { importe: '200,00' }, { importe: '300,00' },
   ]);
-  const { registros, anomalias } = parsearPaginaMovimientos(
-    lineasDe(items), 1, 'a.pdf');
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(anomalias.length, 0);
   assert.equal(registros.length, 3);
   assert.deepEqual(registros.map(r => r.fila), [1, 2, 3]);
@@ -566,11 +568,10 @@ test('parsearPaginaMovimientos: varias filas dan varios registros con fila incre
 
 test('parsearPaginaMovimientos: fila sin la palabra Concepto no genera anomalia', () => {
   // Verificado contra el documento real: hay filas legitimas sin Concepto.
-  const items = paginaMovimientos([
+  const lineas = paginaMovimientos([
     { descripcion: 'Transferencia De Ayuntamiento De Villabajo' },
   ]);
-  const { registros, anomalias } = parsearPaginaMovimientos(
-    lineasDe(items), 1, 'a.pdf');
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(anomalias.length, 0);
   assert.equal(registros[0].concepto, null);
   assert.equal(registros[0].ordenante, 'Ayuntamiento De Villabajo');
@@ -579,10 +580,10 @@ test('parsearPaginaMovimientos: fila sin la palabra Concepto no genera anomalia'
 test('parsearPaginaMovimientos: ordenante con coma interna no se trunca', () => {
   // La regla corta por ", Concepto", nunca por la primera coma: hay
   // ordenantes reales con sufijos societarios que contienen comas.
-  const items = paginaMovimientos([
+  const lineas = paginaMovimientos([
     { descripcion: 'Transferencia De Empresa Ejemplo, S.L., Concepto Factura 9' },
   ]);
-  const { registros } = parsearPaginaMovimientos(lineasDe(items), 1, 'a.pdf');
+  const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(registros[0].ordenante, 'Empresa Ejemplo, S.L.');
   assert.equal(registros[0].concepto, 'Factura 9');
 });
@@ -591,29 +592,26 @@ test('parsearPaginaMovimientos: fila sin estructura "De ... Concepto" va entera 
   // Un listado de movimientos puede traer filas que no sean transferencias
   // (comisiones, recibos): no se ancla la deteccion en la palabra
   // "Transferencia".
-  const items = paginaMovimientos([{ descripcion: 'Comision mantenimiento cuenta' }]);
-  const { registros, anomalias } = parsearPaginaMovimientos(
-    lineasDe(items), 1, 'a.pdf');
+  const lineas = paginaMovimientos([{ descripcion: 'Comision mantenimiento cuenta' }]);
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(registros[0].ordenante, null);
   assert.equal(registros[0].concepto, 'Comision mantenimiento cuenta');
   assert.ok(anomalias.some(a => a.camposFaltantes.includes('ordenante')));
 });
 
 test('parsearPaginaMovimientos: importe negativo con signo delante y detras', () => {
-  const items = paginaMovimientos([
+  const lineas = paginaMovimientos([
     { importe: '-50,00' }, { importe: '75,00-' },
   ]);
-  const { registros, anomalias } = parsearPaginaMovimientos(
-    lineasDe(items), 1, 'a.pdf');
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(anomalias.length, 0);
   assert.equal(registros[0].importe, -50);
   assert.equal(registros[1].importe, -75);
 });
 
 test('parsearPaginaMovimientos: fila con importe ilegible entra igual, con anomalia', () => {
-  const items = paginaMovimientos([{ importe: 'texto-no-importe' }]);
-  const { registros, anomalias } = parsearPaginaMovimientos(
-    lineasDe(items), 3, 'a.pdf');
+  const lineas = paginaMovimientos([{ importe: 'texto-no-importe' }]);
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 3, 'a.pdf');
   assert.equal(registros.length, 1); // no desaparece
   assert.equal(registros[0].importe, null);
   assert.equal(anomalias.length, 1);
@@ -625,8 +623,8 @@ test('parsearPaginaMovimientos: fila con importe ilegible entra igual, con anoma
 });
 
 test('parsearPaginaMovimientos: la cabecera y el titulo no se confunden con filas', () => {
-  const items = paginaMovimientos([{}], { conCabecera: true });
-  const { registros } = parsearPaginaMovimientos(lineasDe(items), 1, 'a.pdf');
+  const lineas = paginaMovimientos([{}], { conCabecera: true });
+  const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(registros.length, 1); // solo la fila real, no titulo ni cabecera
 });
 
@@ -637,10 +635,10 @@ test('parsearPaginaMovimientos: pagina sin ninguna fila da lista vacia sin anoma
 });
 
 test('parsearPaginaMovimientos: campos de busqueda normalizados', () => {
-  const items = paginaMovimientos([{
+  const lineas = paginaMovimientos([{
     descripcion: 'Transferencia De Ayuntamiento De Alcalá, Concepto Limpieza Viaria',
   }]);
-  const { registros } = parsearPaginaMovimientos(lineasDe(items), 1, 'a.pdf');
+  const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(registros[0].ordenanteBusqueda, 'ayuntamiento de alcala');
   assert.equal(registros[0].conceptoBusqueda, 'limpieza viaria');
 });
@@ -835,13 +833,21 @@ test('parsearPaginaAuto: formato transferencia, sigue devolviendo el registro co
 });
 
 test('parsearPaginaAuto: formato movimientos, varios registros con archivo y fila', () => {
-  const items = paginaMovimientos([{ importe: '10,00' }, { importe: '20,00' }]);
+  // 3 filas, no 2: detectarFormato exige >=3 fragmentos de importe, y con
+  // fragmentos EN BRUTO cada fila aporta solo uno (a diferencia de
+  // paginaMovimientos de la Task 3, que ya da lineas agrupadas y no sirve
+  // aqui — parsearPaginaAuto necesita fragmentos en bruto para poder medir
+  // la tolerancia adaptativa antes de agrupar lineas).
+  const items = paginaMovimientosItems([
+    { importe: '10,00' }, { importe: '20,00' }, { importe: '30,00' },
+  ]);
   const { registros, anomalias } = parsearPaginaAuto(items, 2, 'movimientos.pdf');
   assert.equal(anomalias.length, 0);
-  assert.equal(registros.length, 2);
+  assert.equal(registros.length, 3);
   assert.equal(registros[0].formato, 'movimientos');
   assert.equal(registros[0].archivo, 'movimientos.pdf');
-  assert.deepEqual(registros.map(r => r.fila), [1, 2]);
+  assert.deepEqual(registros.map(r => r.fila), [1, 2, 3]);
+  assert.deepEqual(registros.map(r => r.importe), [10, 20, 30]);
 });
 
 test('parsearPaginaAuto: pagina sin texto da anomalia sin_texto y ningun registro', () => {
@@ -883,15 +889,57 @@ function paginaMoldeItems() {
       + 'Fecha operación: 03-02-2025 / Fecha valor: 04-02-2025'),
   ];
 }
+
+/**
+ * Construye los items EN BRUTO (formato PDF.js) de una pagina de listado de
+ * movimientos, reproduciendo la geometria real: cada fila se reparte en dos
+ * sub-alturas (salto 3.6, menor que la fuente) y las filas entre si quedan
+ * separadas con un paso total de 13.8 (salto real "entre filas" de 10.2 +
+ * el propio salto interno de 3.6 que ya se ha descontado dentro de la
+ * fila). NO USA `paginaMovimientos` de la Task 3: esa devuelve lineas ya
+ * agrupadas (el nivel correcto para probar `parsearPaginaMovimientos` en
+ * aislamiento), pero aqui hace falta EN BRUTO porque `parsearPaginaAuto`
+ * tiene que poder medir la tolerancia adaptativa antes de agrupar nada.
+ */
+function paginaMovimientosItems(filas, opciones = {}) {
+  const o = { conCabecera: true, ...opciones };
+  const items = [];
+  let y = 760;
+  if (o.conCabecera) {
+    items.push(item(20, y, 'Movimientos cuenta desde 01/01/2025 hasta 31/12/2025'));
+    y -= 20;
+    items.push(
+      item(20, y, 'Fecha Operacion'), item(90, y, 'Fecha Valor'),
+      item(160, y, 'Concepto'), item(600, y, 'Importe'),
+    );
+    y -= 20;
+  }
+  for (const f of filas) {
+    const o2 = {
+      fechaOperacion: '16/03/2025', fechaValor: '17/03/2025',
+      descripcion: 'Transferencia De Ayuntamiento De Villarriba, Concepto Servicio 123',
+      importe: '1.234,56', ...f,
+    };
+    items.push(item(20, y, o2.fechaOperacion), item(90, y, o2.fechaValor));
+    if (o2.descripcion) items.push(item(160, y - 3.6, o2.descripcion));
+    if (o2.importe !== null) items.push(item(600, y - 3.6, o2.importe));
+    y -= 13.8;
+  }
+  return items;
+}
 ```
 
 Y el import ampliado al principio del fichero (añadir `parsearPaginaAuto` y,
-si no estuvieran ya, `paginaMovimientos`/`item` desde los fixtures):
+si no estuviera ya, `item` desde los fixtures — `paginaMovimientos` NO hace
+falta en este fichero, solo en `test/parser-movimientos.test.js`):
 
 ```js
 import { parsearPaginaAuto } from '../src/parser.js';
-import { paginaMovimientos } from './fixtures/molde.js';
 ```
+
+(`item` ya está importado en la cabecera del fichero desde una tarea
+anterior; `paginaMovimientosItems` es la función local que acabas de
+añadir, no un import.)
 
 - [ ] **Step 2: Verificar que fallan**
 
@@ -1036,7 +1084,16 @@ def contenido():
         y_desc = y - 3.6
         s += texto(160, y_desc, f["desc"])
         s += texto(600, y_desc, f["imp"])
-        y -= 10.2
+        # Paso total entre filas: 13.8, NO 10.2. El salto medido "entre
+        # filas" (10.2) es la distancia desde la sub-altura INFERIOR de una
+        # fila hasta la sub-altura SUPERIOR de la siguiente; como la propia
+        # fila ya baja 3.6 internamente, el paso total de "y" tiene que ser
+        # 3.6 + 10.2 = 13.8 para que el patron alternante 3.6/10.2 salga
+        # correcto. Con 10.2 a secas, el patron real es 3.6/6.6, que NO es
+        # el que se midio en el documento real (verificado: con 13.8 la
+        # tolerancia adaptativa da 6.9 sobre este PDF, igual que sobre el
+        # documento real; con 10.2 da un valor distinto, 13.3).
+        y -= 13.8
     return s
 
 
@@ -1158,7 +1215,16 @@ test('integracion movimientos: recorrido completo desde un PDF real hasta los re
   assert.equal(paginas.length, 1);
   const { registros, anomalias } = parsearPaginaAuto(paginas[0], 1, 'prueba.pdf');
 
-  assert.equal(anomalias.length, 0, 'ninguna fila deberia dar anomalia');
+  // Una sola anomalia esperada: la fila 4 ("Comision mantenimiento cuenta")
+  // se diseño a proposito SIN estructura "De ... Concepto", asi que le
+  // falta el ordenante (campo del nucleo) y debe marcarse — pero sigue
+  // apareciendo como registro, no desaparece (comprobado mas abajo).
+  assert.equal(anomalias.length, 1);
+  assert.equal(anomalias[0].archivo, 'prueba.pdf');
+  assert.equal(anomalias[0].pagina, 1);
+  assert.equal(anomalias[0].fila, 4);
+  assert.equal(anomalias[0].motivo, 'campos_incompletos');
+  assert.deepEqual(anomalias[0].camposFaltantes, ['ordenante']);
   assert.equal(registros.length, 5);
 
   assert.equal(registros[0].ordenante, 'Ayuntamiento De Villarriba');
