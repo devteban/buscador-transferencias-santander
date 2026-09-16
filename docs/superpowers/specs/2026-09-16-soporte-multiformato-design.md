@@ -281,24 +281,48 @@ misma reconstrucción de líneas que usa la herramienta.
 - Un tercer formato.
 - OCR.
 
-## Trabajo pendiente que se arrastra
+## Estado real del código al empezar este trabajo
 
-De la revisión final del proyecto anterior quedaron dos puntos sin aplicar,
-y uno de ellos se resuelve aquí por cercanía:
+Entre el diseño original y este, el proyecto se movió sin pasar por esta
+sesión: se fusionó `feat/buscador` a `main`, y se añadió una funcionalidad
+completa de **exportar a PDF** (`exportarPdfFiltrado`, `generarPdfVisual`,
+con `pdf-lib` vendorizado igual que PDF.js — mismo patrón, sin peticiones de
+red). También se resolvió ya la moneda no visible (hoy `textoImporte()`
+añade el código de moneda al importe cuando no es EUR): se retira de la
+lista de pendientes.
 
-- **Moneda no visible** (Importante): `parser.js` extrae `moneda`, pero no
-  hay columna, así que un importe en divisa se lee como si fuera en euros.
-  Se corrige en este trabajo, porque ya se están tocando las columnas.
-- **Fixture incompleto** (Menor): `paginaMolde` no genera seis líneas que sí
-  aparecen en todas las páginas reales del formato 1. Queda pendiente; no se
-  aborda aquí para no tocar el camino del formato 1.
+Queda un pendiente de la revisión anterior, sin resolver y fuera de alcance
+aquí por el mismo motivo que el resto del formato 1: **fixture incompleto**
+(Menor) — `paginaMolde` no genera seis líneas que sí aparecen en todas las
+páginas reales del formato 1.
+
+### La exportación a PDF necesita ser consciente de varios archivos
+
+`APP.datosPdf` y `APP.documentoPdf` son **singulares**: guardan el PDF de un
+solo archivo cargado. Con la carga múltiple, una fila puede pertenecer a
+cualquiera de los archivos cargados, y exportar a PDF necesita copiar cada
+página **del archivo del que vino**. Sin este cambio, cargar dos PDF y
+exportar produciría páginas del archivo equivocado o una excepción.
+
+**Cambio:** `APP.datosPdf`/`APP.documentoPdf` se sustituyen por
+`APP.documentosPorArchivo`, un `Map` de `nombreArchivo` a
+`{ datosPdf, documentoPdf }`. Cada archivo cargado añade su entrada.
+
+`paginasDeFilas(filas)` se sustituye por `paginasPorArchivo(filas)`, que
+agrupa las páginas por archivo **conservando el orden en que aparecen en
+`filas`** (el mismo criterio que ya usaba `paginasDeFilas`, aplicado ahora
+por archivo en vez de globalmente). `exportarPdfFiltrado` y
+`generarPdfVisual` recorren ese mapa archivo por archivo — para cada uno,
+misma lógica de copia directa con repliegue a copia visual que ya existe
+hoy — y concatenan el resultado en un único PDF de salida, en el orden en
+que los archivos aparecen en la tabla filtrada.
 
 ## Entregables
 
 | Fichero | Cambio |
 |---|---|
 | `src/parser.js` | `detectarFormato`, `parsearPaginaMovimientos`, `parsearPaginaAuto`, tolerancia adaptativa, `permitirNegativo` |
-| `src/ui.js` | carga múltiple, acumulación, progreso por archivo, columnas nuevas, aviso de truncado |
+| `src/ui.js` | carga múltiple, acumulación, progreso por archivo, columnas nuevas, aviso de truncado, `APP.documentosPorArchivo`, exportación a PDF consciente de varios archivos |
 | `test/parser-movimientos.test.js` | nuevo |
 | `test/fixtures/generar_pdf_prueba_movimientos.py` | nuevo |
 | `test/integracion-movimientos.test.js` | nuevo |
