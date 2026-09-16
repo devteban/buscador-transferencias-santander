@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { parsearPaginaMovimientos } from '../src/parser.js';
-import { paginaMovimientos } from './fixtures/molde.js';
+import { paginaMovimientos, linea } from './fixtures/molde.js';
 
 test('parsearPaginaMovimientos: extrae los cuatro campos del nucleo de una fila', () => {
   const lineas = paginaMovimientos([{}]); // una fila con los valores por defecto
@@ -111,4 +111,38 @@ test('parsearPaginaMovimientos: campos de busqueda normalizados', () => {
   const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
   assert.equal(registros[0].ordenanteBusqueda, 'ayuntamiento de alcala');
   assert.equal(registros[0].conceptoBusqueda, 'limpieza viaria');
+});
+
+test('parsearPaginaMovimientos: segunda fecha ilegible no hace desaparecer la fila', () => {
+  const lineas = [
+    linea(700, 20, '16/03/2025', 90, 'FechaMal', 160, 'Descripcion', 600, '100,00'),
+  ];
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
+  assert.equal(registros.length, 1); // no desaparece
+  assert.equal(registros[0].fila, 1);
+  assert.equal(registros[0].fechaOperacion, '2025-03-16');
+  assert.equal(registros[0].fechaValor, null);
+  assert.ok(anomalias.some(a => a.fila === 1 && a.camposFaltantes.includes('fechaValor')));
+});
+
+test('parsearPaginaMovimientos: ordenante con dos comas internas no se trunca', () => {
+  const lineas = paginaMovimientos([
+    { descripcion: 'Transferencia De Empresa, Ejemplo, S.L., Concepto Factura 1' },
+  ]);
+  const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
+  assert.equal(registros[0].ordenante, 'Empresa, Ejemplo, S.L.');
+  assert.equal(registros[0].concepto, 'Factura 1');
+});
+
+test('parsearPaginaMovimientos: fecha embebida en la descripcion no se confunde con el importe', () => {
+  // Una referencia con forma de importe en medio del texto no debe tomarse
+  // como el importe real: solo el ULTIMO token de la linea cuenta.
+  const lineas = [
+    linea(700, 20, '16/03/2025', 90, '17/03/2025', 160,
+          'Transferencia De Ayuntamiento De Villarriba, Concepto Ref. 123,45 del contrato',
+          600, '500,00'),
+  ];
+  const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
+  assert.equal(registros[0].importe, 500);
+  assert.ok(registros[0].concepto.includes('123,45'));
 });

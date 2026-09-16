@@ -460,21 +460,34 @@ function extraerOrdenanteConcepto(descripcion) {
 
 /**
  * Extrae un registro de una linea con forma de fila (empieza por fecha,
- * termina en importe). Devuelve null si la linea no tiene al menos dos
- * fechas dd/mm/aaaa (no es una fila de datos: titulo, cabecera...).
+ * termina en importe).
+ *
+ * RE_FECHA_SLASH_INICIO (comprobado por el llamante antes de invocar esta
+ * funcion) garantiza que la linea empieza por una fecha, asi que fechas[0]
+ * siempre existe. fechas[1] (fecha valor) puede faltar si esta rota o
+ * ausente: en ese caso NO se descarta la fila -- se degrada como el resto
+ * de campos, dejando fechaValor a null y disparando la anomalia de
+ * campos incompletos, para no perder la fila en silencio.
  */
 function parsearFilaMovimiento(lineaTexto, pagina, archivo, fila) {
   const fechas = [...lineaTexto.matchAll(RE_FECHA_SLASH_GLOBAL)];
-  if (fechas.length < 2) return null;
+  if (fechas.length === 0) return null; // no deberia poder pasar; red de seguridad
 
   const reg = registroVacioMovimientos(pagina, archivo, fila);
 
   const isoOp = normalizarFecha(fechas[0][0].replace(/\//g, '-'));
   if (isoOp) { reg.fechaOperacion = isoOp; reg.fechaOperacionTexto = fechas[0][0]; }
-  const isoVal = normalizarFecha(fechas[1][0].replace(/\//g, '-'));
-  if (isoVal) { reg.fechaValor = isoVal; reg.fechaValorTexto = fechas[1][0]; }
 
-  const finFechas = fechas[1].index + fechas[1][0].length;
+  let finFechas = fechas[0].index + fechas[0][0].length;
+  if (fechas.length >= 2) {
+    const isoVal = normalizarFecha(fechas[1][0].replace(/\//g, '-'));
+    if (isoVal) { reg.fechaValor = isoVal; reg.fechaValorTexto = fechas[1][0]; }
+    finFechas = fechas[1].index + fechas[1][0].length;
+  }
+  // Con fechas.length === 1, fechaValor queda null (registroVacioMovimientos
+  // ya lo inicializa asi) y finFechas se calcula desde el final de la unica
+  // fecha encontrada, para poder seguir extrayendo descripcion/importe.
+
   const tokens = lineaTexto.trim().split(/\s+/);
   const ultimoToken = tokens[tokens.length - 1];
   // El importe se valida ENTERO (todo el ultimo token), nunca con un regex
