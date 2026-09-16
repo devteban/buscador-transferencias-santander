@@ -353,3 +353,60 @@ export function parsearPagina(lineas, numeroPagina) {
 
   return { registro: reg, anomalia };
 }
+
+// ============================================================================
+// FORMATO: listado de movimientos (muchas filas por pagina)
+// ============================================================================
+
+const RE_FECHA_SLASH_INICIO = /^\s*\d{2}\/\d{2}\/\d{4}/;
+const RE_IMPORTE_FIN = /(-?[\d.]*\d,\d{2}-?)\s*$/;
+
+/**
+ * Formato de la pagina, a partir de los fragmentos EN BRUTO de PDF.js (no
+ * lineas ya agrupadas): la reconstruccion de lineas necesita una tolerancia
+ * que depende del formato, asi que la deteccion tiene que ir antes.
+ */
+export function detectarFormato(items) {
+  const utiles = (items || []).filter(it => it && it.str && it.str.trim());
+  if (utiles.length === 0) return null;
+  const texto = utiles.map(it => it.str).join(' ');
+  if (texto.includes(MARCADOR)) return 'transferencia';
+  const conFecha = utiles.filter(it => RE_FECHA_SLASH_INICIO.test(it.str)).length;
+  const conImporte = utiles.filter(it => RE_IMPORTE_FIN.test(it.str)).length;
+  return (conFecha >= 3 && conImporte >= 3) ? 'movimientos' : null;
+}
+
+/**
+ * Tolerancia vertical calculada de la propia pagina, para formatos donde
+ * cada fila se reparte en varias sub-alturas de PDF.js (ver el diseno: en
+ * el documento real, salto intra-fila 3.6, salto entre filas 10.2, y la
+ * tolerancia por defecto de agruparEnLineas -altura*0.5- es menor que el
+ * salto intra-fila, asi que parte cada fila en dos).
+ *
+ * Se buscan los saltos verticales entre coordenadas Y distintas, se ordenan
+ * de menor a mayor, y se localiza el mayor salto RELATIVO entre dos
+ * consecutivos: la frontera entre "dentro de una fila" y "entre filas". La
+ * tolerancia devuelta es el punto medio de esa frontera.
+ *
+ * Con menos de 5 saltos distintos no hay evidencia suficiente para separar
+ * dos grupos, y se devuelve null (el llamante debe usar entonces la
+ * tolerancia por defecto).
+ */
+export function tolerenciaAdaptativa(items) {
+  const ys = [...new Set((items || [])
+    .filter(it => it && it.str && it.str.trim())
+    .map(it => it.transform[5]))]
+    .sort((a, b) => b - a);
+  if (ys.length < 6) return null;
+  const saltos = [];
+  for (let i = 1; i < ys.length; i++) saltos.push(ys[i - 1] - ys[i]);
+  saltos.sort((a, b) => a - b);
+  let mejorIdx = -1, mejorRatio = 1;
+  for (let i = 0; i < saltos.length - 1; i++) {
+    if (saltos[i] <= 0) continue;
+    const ratio = saltos[i + 1] / saltos[i];
+    if (ratio > mejorRatio) { mejorRatio = ratio; mejorIdx = i; }
+  }
+  if (mejorIdx === -1) return null;
+  return (saltos[mejorIdx] + saltos[mejorIdx + 1]) / 2;
+}

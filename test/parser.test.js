@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizarImporte, normalizarFecha, normalizarTexto, agruparEnLineas,
-  parsearPagina,
+  parsearPagina, detectarFormato, tolerenciaAdaptativa,
 } from '../src/parser.js';
 import { item, paginaMolde } from './fixtures/molde.js';
 
@@ -349,4 +349,52 @@ test('agruparEnLineas: la tolerancia fija tambien separa filas mas alla de ella'
   const items = [item(10, 700, 'FILA1', 4), item(10, 689, 'FILA2', 4)]; // salto 11
   const lineas = agruparEnLineas(items, { tolerancia: 6 });
   assert.equal(lineas.length, 2);
+});
+
+test('detectarFormato: reconoce el marcador de transferencia', () => {
+  const items = [item(20, 700, 'TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA')];
+  assert.equal(detectarFormato(items), 'transferencia');
+});
+
+test('detectarFormato: reconoce un listado de movimientos por la forma de las filas', () => {
+  const items = [];
+  for (let i = 0; i < 4; i++) {
+    items.push(item(20, 700 - i * 12, `0${i + 1}/01/2025`));
+    items.push(item(400, 700 - i * 12, `1.234,5${i} EUR`.replace(' EUR', '')));
+  }
+  assert.equal(detectarFormato(items), 'movimientos');
+});
+
+test('detectarFormato: con menos de 3 fechas o 3 importes, no lo clasifica como movimientos', () => {
+  const items = [item(20, 700, '01/01/2025'), item(400, 700, '10,00'),
+                 item(20, 688, 'texto suelto sin mas filas')];
+  assert.equal(detectarFormato(items), null);
+});
+
+test('detectarFormato: pagina vacia o sin ninguna forma reconocible da null', () => {
+  assert.equal(detectarFormato([]), null);
+  assert.equal(detectarFormato([item(20, 700, 'texto cualquiera sin forma')]), null);
+});
+
+test('tolerenciaAdaptativa: separa dos grupos de saltos y devuelve el punto medio', () => {
+  // Filas de dos sub-alturas (salto 3.6 dentro, salto 10.2 entre filas),
+  // reproduciendo la geometria medida en el documento real.
+  const items = [];
+  let y = 700;
+  for (let f = 0; f < 6; f++) {
+    items.push(item(20, y, 'A'));
+    items.push(item(300, y - 3.6, 'B'));
+    y -= 10.2;
+  }
+  const tol = tolerenciaAdaptativa(items);
+  assert.ok(tol > 3.6 && tol < 10.2, `tolerancia ${tol} deberia caer entre 3.6 y 10.2`);
+});
+
+test('tolerenciaAdaptativa: con pocos saltos distintos, no hay evidencia suficiente', () => {
+  const items = [item(20, 700, 'A'), item(20, 695, 'B')];
+  assert.equal(tolerenciaAdaptativa(items), null);
+});
+
+test('tolerenciaAdaptativa: pagina vacia da null', () => {
+  assert.equal(tolerenciaAdaptativa([]), null);
 });
