@@ -880,16 +880,27 @@ tests, junto a las demás importaciones — no toca ningún test existente):
 function paginaMoldeItems() {
   return [
     item(20, 760, 'TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA'),
+    item(20, 740, 'Fecha de envío: 05-02-2025'),
     item(20, 720, 'AYUNTAMIENTO DE VILLARRIBA'),
     item(260, 720, '>>'),
     item(300, 720, '345,00  EUR'),
     item(520, 720, '>>'),
     item(560, 720, 'EMPRESA EJEMPLO SL'),
+    item(20, 700, 'CONCEPTO:'),
+    item(20, 688, 'Servicio de ejemplo 123'),
     item(20, 60, 'Refª Origen:   /   Nuestra Refª: 12345ABC678'
       + 'Fecha operación: 03-02-2025 / Fecha valor: 04-02-2025'),
   ];
 }
+```
 
+Verificado contra el `parsearPagina` real (Task 1, sin tocar): con estos
+fragmentos produce el registro completo, `anomalias.length === 0`. El
+helper original (sin `CONCEPTO:` ni `Fecha de envío:`) dejaba `concepto` y
+`fechaEnvio` en `null`, y como son campos del núcleo del formato 1, eso
+generaba una anomalía `campos_incompletos` que contradecía el test.
+
+```js
 /**
  * Construye los items EN BRUTO (formato PDF.js) de una pagina de listado de
  * movimientos, reproduciendo la geometria real: cada fila se reparte en dos
@@ -1003,7 +1014,9 @@ export function parsearPaginaAuto(items, numeroPagina, archivo) {
 - [ ] **Step 4: Verificar que pasan**
 
 Run: `node --test test/*.test.js`
-Expected: PASS, 67 tests (63 + 4 nuevos).
+Expected: PASS, 74 tests (70 + 4 nuevos). (El recuento base cambio de
+63 a 70 porque la Task 3 acabo anadiendo 13 tests, no 10: la ronda de fix
+anadio 3 mas tras el hallazgo de la fila que desaparecia.)
 
 - [ ] **Step 5: Crear el generador de PDF sintético del formato 2**
 
@@ -1258,7 +1271,7 @@ test('integracion movimientos: recorrido completo desde un PDF real hasta los re
 - [ ] **Step 9: Verificar que pasa**
 
 Run: `node --test test/*.test.js`
-Expected: PASS, 68 tests (67 + 1 nuevo).
+Expected: PASS, 75 tests (74 + 1 nuevo).
 
 - [ ] **Step 10: Verificación por mutación (opcional pero recomendada)**
 
