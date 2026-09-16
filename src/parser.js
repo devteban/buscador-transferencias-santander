@@ -5,15 +5,25 @@
 const RE_IMPORTE = /^\d{1,3}(?:\.\d{3})*,\d{2}$|^\d{1,3},\d{2}$/;
 const RE_FECHA = /^(\d{2})-(\d{2})-(\d{4})$/;
 
-export function normalizarImporte(texto) {
+export function normalizarImporte(texto, opciones) {
   if (typeof texto !== 'string') return null;
   // Se recortan los extremos y el codigo de moneda, pero NUNCA los espacios
   // internos: el texto viene de fragmentos de PDF unidos con espacios, y
   // borrarlos convertiria "12 3,45" en un importe valido de 123,45.
-  const limpio = texto.trim().replace(/\s*[A-Z]{3}$/, '').trim();
+  let limpio = texto.trim().replace(/\s*[A-Z]{3}$/, '').trim();
+  let negativo = false;
+  // El formato de movimientos puede traer cargos con el signo delante o
+  // detras (las dos convenciones habituales en extractos). Sin
+  // permitirNegativo, el comportamiento es EXACTAMENTE el de antes: un
+  // signo simplemente no encaja en RE_IMPORTE y da null, como siempre.
+  if (opciones && opciones.permitirNegativo) {
+    if (limpio.startsWith('-')) { negativo = true; limpio = limpio.slice(1).trim(); }
+    else if (limpio.endsWith('-')) { negativo = true; limpio = limpio.slice(0, -1).trim(); }
+  }
   if (!RE_IMPORTE.test(limpio)) return null;
   const n = Number(limpio.replace(/\./g, '').replace(',', '.'));
-  return Number.isFinite(n) ? n : null;
+  if (!Number.isFinite(n)) return null;
+  return negativo ? -n : n;
 }
 
 export function normalizarFecha(texto) {
@@ -46,7 +56,7 @@ function toleranciaY(alturaFuente) {
   return Math.max(2, alturaFuente * 0.5);
 }
 
-export function agruparEnLineas(items) {
+export function agruparEnLineas(items, opciones) {
   // Se ordena por Y antes de agrupar para que el resultado no dependa del
   // orden en que PDF.js emita los fragmentos, y se compara cada fragmento
   // con el ANTERIOR en vez de con un ancla fija: asi una linea ancha con
@@ -62,14 +72,19 @@ export function agruparEnLineas(items) {
     .sort((a, b) => b.y - a.y);
   if (utiles.length === 0) return [];
 
+  const tolFija = opciones && typeof opciones.tolerancia === 'number'
+    ? opciones.tolerancia : null;
+
   const grupos = [];
   let actual = null;
   let anterior = null;
   for (const f of utiles) {
     // La tolerancia es la mayor de las dos alturas implicadas, para que
-    // unir A con B de el mismo resultado que unir B con A.
-    const tol = anterior === null
-      ? 0
+    // unir A con B de el mismo resultado que unir B con A. Si se paso una
+    // tolerancia fija (formatos tabulares con geometria propia), se usa esa
+    // en vez de calcularla de la altura de fuente.
+    const tol = tolFija !== null ? tolFija
+      : anterior === null ? 0
       : Math.max(toleranciaY(f.altura), toleranciaY(anterior.altura));
     if (actual === null || Math.abs(anterior.y - f.y) > tol) {
       actual = { y: f.y, fragmentos: [] };

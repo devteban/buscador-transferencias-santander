@@ -297,3 +297,53 @@ test('parsearPagina: extra ausente no rompe el nucleo', () => {
   assert.equal(registro.extra.iban, undefined);
   assert.equal(registro.importe, 345);
 });
+
+test('normalizarImporte: sin opciones, comportamiento identico al actual', () => {
+  assert.equal(normalizarImporte('1.234,56'), 1234.56);
+  assert.equal(normalizarImporte('-1.234,56'), null); // rechazado, como hoy
+});
+
+test('normalizarImporte: con permitirNegativo, acepta el signo delante', () => {
+  assert.equal(normalizarImporte('-1.234,56', { permitirNegativo: true }), -1234.56);
+  assert.equal(normalizarImporte('-345,00', { permitirNegativo: true }), -345);
+});
+
+test('normalizarImporte: con permitirNegativo, acepta el signo detras', () => {
+  assert.equal(normalizarImporte('1.234,56-', { permitirNegativo: true }), -1234.56);
+});
+
+test('normalizarImporte: permitirNegativo no relaja el resto de reglas', () => {
+  // Formato ingles, espacio interno, sin decimales: siguen rechazados.
+  assert.equal(normalizarImporte('-1,234.56', { permitirNegativo: true }), null);
+  assert.equal(normalizarImporte('-12 3,45', { permitirNegativo: true }), null);
+  assert.equal(normalizarImporte('-1234', { permitirNegativo: true }), null);
+});
+
+test('normalizarImporte: sin permitirNegativo, un signo detras tambien se rechaza', () => {
+  assert.equal(normalizarImporte('1.234,56-'), null);
+});
+
+test('agruparEnLineas: sin opciones, comportamiento identico al actual', () => {
+  const items = [item(10, 700, 'A'), item(60, 698, 'B'), item(10, 680, 'C')];
+  const lineas = agruparEnLineas(items);
+  assert.equal(lineas.length, 2);
+  assert.equal(lineas[0].texto, 'A B');
+});
+
+test('agruparEnLineas: con tolerancia fija, une fragmentos que la tolerancia por defecto separaria', () => {
+  // altura 4 -> tolerancia por defecto max(2, 4*0.5) = 2; separados 3.6 no
+  // se unirian por defecto, pero si con una tolerancia fija de 6.
+  const items = [item(10, 700, 'FECHA', 4), item(300, 696.4, 'IMPORTE', 4)];
+  const sinOpciones = agruparEnLineas(items);
+  assert.equal(sinOpciones.length, 2); // se parte, como hoy sin ayuda
+
+  const conTolerancia = agruparEnLineas(items, { tolerancia: 6 });
+  assert.equal(conTolerancia.length, 1);
+  assert.equal(conTolerancia[0].texto, 'FECHA IMPORTE');
+});
+
+test('agruparEnLineas: la tolerancia fija tambien separa filas mas alla de ella', () => {
+  const items = [item(10, 700, 'FILA1', 4), item(10, 689, 'FILA2', 4)]; // salto 11
+  const lineas = agruparEnLineas(items, { tolerancia: 6 });
+  assert.equal(lineas.length, 2);
+});
