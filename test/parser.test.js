@@ -398,3 +398,65 @@ test('tolerenciaAdaptativa: con pocos saltos distintos, no hay evidencia suficie
 test('tolerenciaAdaptativa: pagina vacia da null', () => {
   assert.equal(tolerenciaAdaptativa([]), null);
 });
+
+test('detectarFormato: el marcador de transferencia gana aunque tambien haya forma de movimientos', () => {
+  // Una pagina con el marcador Y ademas varias fechas/importes sueltos
+  // (coincidencia posible, no solo teorica): debe ganar 'transferencia'
+  // siempre, porque esa comprobacion se hace y retorna ANTES de contar
+  // fechas e importes.
+  const items = [
+    item(20, 750, 'TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA'),
+    item(20, 700, '01/01/2025'), item(400, 700, '10,00'),
+    item(20, 688, '02/01/2025'), item(400, 688, '20,00'),
+    item(20, 676, '03/01/2025'), item(400, 676, '30,00'),
+  ];
+  assert.equal(detectarFormato(items), 'transferencia');
+});
+
+test('detectarFormato: el umbral exige AMBOS contadores, no la suma', () => {
+  // 2 fechas y 2 importes: ninguno llega a 3, debe ser null.
+  const dosYDos = [
+    item(20, 700, '01/01/2025'), item(400, 700, '10,00'),
+    item(20, 688, '02/01/2025'), item(400, 688, '20,00'),
+  ];
+  assert.equal(detectarFormato(dosYDos), null);
+
+  // 3 fechas pero solo 2 importes: sigue sin llegar al umbral en importe.
+  const tresFechasDosImportes = [
+    item(20, 700, '01/01/2025'), item(400, 700, '10,00'),
+    item(20, 688, '02/01/2025'), item(400, 688, '20,00'),
+    item(20, 676, '03/01/2025'),
+  ];
+  assert.equal(detectarFormato(tresFechasDosImportes), null);
+
+  // 2 fechas pero 3 importes: mismo caso al reves.
+  const dosFechasTresImportes = [
+    item(20, 700, '01/01/2025'), item(400, 700, '10,00'),
+    item(400, 688, '20,00'),
+    item(400, 676, '30,00'),
+  ];
+  assert.equal(detectarFormato(dosFechasTresImportes), null);
+});
+
+test('tolerenciaAdaptativa: una rejilla perfectamente regular no produce una tolerancia espuria', () => {
+  // Todos los saltos verticales iguales (una tabla sin el problema de
+  // particion de filas): todos los ratios dan 1, ninguno supera el
+  // mejorRatio inicial de 1, y debe devolver null (sin evidencia de dos
+  // grupos distintos), no un numero cualquiera.
+  const items = [];
+  for (let i = 0; i < 8; i++) items.push(item(20, 700 - i * 10, `linea ${i}`));
+  assert.equal(tolerenciaAdaptativa(items), null);
+});
+
+test('tolerenciaAdaptativa: saltos en cero no lanzan excepcion', () => {
+  // Varios fragmentos en la misma Y exacta (salto 0 entre ellos), mezclados
+  // con saltos normales: el guard "saltos[i] <= 0" debe saltarselos sin
+  // dividir por cero.
+  const items = [
+    item(20, 700, 'A'), item(60, 700, 'B'), // misma Y, salto 0 entre ellas
+    item(20, 690, 'C'), item(60, 690, 'D'),
+    item(20, 680, 'E'), item(60, 680, 'F'),
+    item(20, 670, 'G'), item(60, 670, 'H'),
+  ];
+  assert.doesNotThrow(() => tolerenciaAdaptativa(items));
+});
