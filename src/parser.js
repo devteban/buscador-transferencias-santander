@@ -410,3 +410,119 @@ export function tolerenciaAdaptativa(items) {
   if (mejorIdx === -1) return null;
   return (saltos[mejorIdx] + saltos[mejorIdx + 1]) / 2;
 }
+
+const CAMPOS_NUCLEO_MOVIMIENTOS = ['fechaOperacion', 'fechaValor', 'ordenante', 'importe'];
+const RE_FECHA_SLASH_GLOBAL = /\d{2}\/\d{2}\/\d{4}/g;
+
+/** Registro vacio del formato movimientos, con la misma forma que el resto
+ * de Registro (mismas claves que produce parsearPagina) para que
+ * filtrar/ordenar/generarCsv en la interfaz no tengan que distinguir. */
+function registroVacioMovimientos(pagina, archivo, fila) {
+  return {
+    pagina, archivo, formato: 'movimientos', fila,
+    ordenante: null, ordenanteBusqueda: '',
+    importe: null, importeTexto: null, moneda: null,
+    concepto: null, conceptoBusqueda: '',
+    fechaOperacion: null, fechaOperacionTexto: null,
+    fechaValor: null, fechaValorTexto: null,
+    fechaEnvio: null, fechaEnvioTexto: null,
+    extra: {},
+  };
+}
+
+/**
+ * Extrae ordenante y concepto de la descripcion de una fila (el texto entre
+ * las dos fechas y el importe). Se corta por la etiqueta ", Concepto",
+ * NUNCA por la primera coma: hay ordenantes reales con sufijos societarios
+ * que contienen comas (verificado: 2 de 134 filas del documento real).
+ *
+ * Si no hay " De " en la descripcion, no se asume que es una transferencia
+ * (un listado de movimientos puede traer comisiones, recibos, etc): la
+ * descripcion entera pasa a concepto y el ordenante queda sin rellenar.
+ */
+function extraerOrdenanteConcepto(descripcion) {
+  const iDe = descripcion.indexOf(' De ');
+  if (iDe === -1) {
+    const c = descripcion.trim();
+    return { ordenante: null, concepto: c || null };
+  }
+  const resto = descripcion.slice(iDe + 4);
+  const iConceptoComa = resto.indexOf(', Concepto');
+  if (iConceptoComa === -1) {
+    const ord = resto.trim().replace(/,\s*$/, '');
+    return { ordenante: ord || null, concepto: null };
+  }
+  const ordenante = resto.slice(0, iConceptoComa).trim();
+  const iEtiqueta = resto.indexOf('Concepto', iConceptoComa);
+  const concepto = resto.slice(iEtiqueta + 'Concepto'.length).trim();
+  return { ordenante: ordenante || null, concepto: concepto || null };
+}
+
+/**
+ * Extrae un registro de una linea con forma de fila (empieza por fecha,
+ * termina en importe). Devuelve null si la linea no tiene al menos dos
+ * fechas dd/mm/aaaa (no es una fila de datos: titulo, cabecera...).
+ */
+function parsearFilaMovimiento(lineaTexto, pagina, archivo, fila) {
+  const fechas = [...lineaTexto.matchAll(RE_FECHA_SLASH_GLOBAL)];
+  if (fechas.length < 2) return null;
+
+  const reg = registroVacioMovimientos(pagina, archivo, fila);
+
+  const isoOp = normalizarFecha(fechas[0][0].replace(/\//g, '-'));
+  if (isoOp) { reg.fechaOperacion = isoOp; reg.fechaOperacionTexto = fechas[0][0]; }
+  const isoVal = normalizarFecha(fechas[1][0].replace(/\//g, '-'));
+  if (isoVal) { reg.fechaValor = isoVal; reg.fechaValorTexto = fechas[1][0]; }
+
+  const finFechas = fechas[1].index + fechas[1][0].length;
+  const tokens = lineaTexto.trim().split(/\s+/);
+  const ultimoToken = tokens[tokens.length - 1];
+  // El importe se valida ENTERO (todo el ultimo token), nunca con un regex
+  // parcial: la misma regla que ya rige en parsearPagina, por el mismo
+  // motivo (evitar leer un fragmento de numero como si fuera el importe).
+  const importe = normalizarImporte(ultimoToken, { permitirNegativo: true });
+  if (importe !== null) {
+    reg.importe = importe;
+    reg.importeTexto = ultimoToken;
+  }
+
+  // La descripcion es lo que queda entre el final de las dos fechas y el
+  // inicio del ultimo token (el importe), reconociendolo aunque no haya
+  // validado como numero (para no perder el texto en una fila con importe
+  // ilegible).
+  const iUltimoToken = lineaTexto.lastIndexOf(ultimoToken);
+  const descripcion = lineaTexto.slice(finFechas, iUltimoToken).trim();
+  const { ordenante, concepto } = extraerOrdenanteConcepto(descripcion);
+  if (ordenante) { reg.ordenante = ordenante; reg.ordenanteBusqueda = normalizarTexto(ordenante); }
+  if (concepto) { reg.concepto = concepto; reg.conceptoBusqueda = normalizarTexto(concepto); }
+
+  return reg;
+}
+
+/**
+ * Extrae TODOS los registros de una pagina de listado de movimientos: a
+ * diferencia de parsearPagina (un registro por pagina), aqui cada linea con
+ * forma de fila produce su propio registro. Las lineas que no tengan esa
+ * forma (titulo, cabecera de columnas) se ignoran sin generar anomalia: son
+ * texto fijo de la pagina, no filas de datos con un campo roto.
+ */
+export function parsearPaginaMovimientos(lineas, numeroPagina, archivo) {
+  const registros = [];
+  const anomalias = [];
+  let fila = 0;
+  for (const l of lineas || []) {
+    if (!RE_FECHA_SLASH_INICIO.test(l.texto)) continue;
+    fila++;
+    const reg = parsearFilaMovimiento(l.texto, numeroPagina, archivo, fila);
+    if (!reg) continue;
+    registros.push(reg);
+    const faltantes = CAMPOS_NUCLEO_MOVIMIENTOS.filter(c => reg[c] === null);
+    if (faltantes.length > 0) {
+      anomalias.push({
+        pagina: numeroPagina, archivo, fila,
+        motivo: 'campos_incompletos', camposFaltantes: faltantes,
+      });
+    }
+  }
+  return { registros, anomalias };
+}

@@ -111,3 +111,55 @@ export function paginaMolde(opciones = {}) {
 
   return L;
 }
+
+/**
+ * UNA fila de un listado de movimientos, ya como Linea reconstruida (no
+ * como fragmentos en bruto de PDF.js): parsearPaginaMovimientos recibe
+ * lineas, igual que parsearPagina (formato 1) recibe las que construye
+ * paginaMolde. La geometria real del documento (fuente pequena, fila
+ * partida en dos sub-alturas) es asunto de agruparEnLineas/
+ * tolerenciaAdaptativa (Task 2, ya verificadas contra el documento real por
+ * separado) y de la prueba de integracion (Task 4, con un PDF generado que
+ * SI reproduce esa geometria); aqui no hace falta reproducirla para probar
+ * la extraccion de campos de una fila ya bien formada.
+ *
+ * Todos los valores son inventados.
+ */
+export function filaMovimientos(y, opciones = {}) {
+  const o = {
+    fechaOperacion: '16/03/2025',
+    fechaValor: '17/03/2025',
+    descripcion: 'Transferencia De Ayuntamiento De Villarriba, Concepto Servicio 123',
+    importe: '1.234,56',
+    ...opciones,
+  };
+  const pares = [20, o.fechaOperacion, 90, o.fechaValor];
+  if (o.descripcion) pares.push(160, o.descripcion);
+  if (o.importe !== null) pares.push(600, o.importe);
+  return linea(y, ...pares);
+}
+
+/**
+ * Pagina sintetica de listado de movimientos, ya como array de Lineas:
+ * titulo, cabecera de columnas (solo si conCabecera, como en el molde real,
+ * que solo la repite en la primera pagina del documento) y N filas.
+ * `filas` es un array de opciones para filaMovimientos (una entrada por
+ * fila).
+ */
+export function paginaMovimientos(filas, opciones = {}) {
+  const o = { conCabecera: true, ...opciones };
+  const lineas = [];
+  let y = 760;
+  if (o.conCabecera) {
+    lineas.push(linea(y, 20, 'Movimientos cuenta desde 01/01/2025 hasta 31/12/2025'));
+    y -= 20;
+    lineas.push(linea(y, 20, 'Fecha Operacion', 90, 'Fecha Valor',
+                       160, 'Concepto', 600, 'Importe'));
+    y -= 20;
+  }
+  for (const opcionesFila of filas) {
+    lineas.push(filaMovimientos(y, opcionesFila));
+    y -= 12;
+  }
+  return lineas;
+}
