@@ -310,6 +310,9 @@ test('normalizarImporte: con permitirNegativo, acepta el signo delante', () => {
 
 test('normalizarImporte: con permitirNegativo, acepta el signo detras', () => {
   assert.equal(normalizarImporte('1.234,56-', { permitirNegativo: true }), -1234.56);
+  assert.equal(normalizarImporte('50,00 -', { permitirNegativo: true }), null);
+  assert.equal(normalizarImporte('50,00- ', { permitirNegativo: true }), -50); // espacio EXTERIOR despues del signo se recorta con trim
+  assert.equal(normalizarImporte(' -50,00', { permitirNegativo: true }), -50); // el espacio aqui es EXTERIOR (recortado por el trim de toda la cadena), sigue siendo valido
 });
 
 test('normalizarImporte: permitirNegativo no relaja el resto de reglas', () => {

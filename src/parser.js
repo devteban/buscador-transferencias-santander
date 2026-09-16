@@ -17,8 +17,8 @@ export function normalizarImporte(texto, opciones) {
   // permitirNegativo, el comportamiento es EXACTAMENTE el de antes: un
   // signo simplemente no encaja en RE_IMPORTE y da null, como siempre.
   if (opciones && opciones.permitirNegativo) {
-    if (limpio.startsWith('-')) { negativo = true; limpio = limpio.slice(1).trim(); }
-    else if (limpio.endsWith('-')) { negativo = true; limpio = limpio.slice(0, -1).trim(); }
+    if (limpio.startsWith('-')) { negativo = true; limpio = limpio.slice(1); }
+    else if (limpio.endsWith('-')) { negativo = true; limpio = limpio.slice(0, -1); }
   }
   if (!RE_IMPORTE.test(limpio)) return null;
   const n = Number(limpio.replace(/\./g, '').replace(',', '.'));
