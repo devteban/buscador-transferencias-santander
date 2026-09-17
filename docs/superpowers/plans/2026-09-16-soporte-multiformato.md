@@ -1704,6 +1704,17 @@ KB)`; ambos `grep` dan 0. Si el `grep` de `botonOtroPdf` da más de 0, queda
 alguna referencia sin actualizar — corregirla antes de seguir; la Task 6
 (la siguiente) usará `botonVaciarTodo` en su lugar.
 
+**Nota añadida tras un intento real de implementación:** `pintarResultados`
+(que la Task 6 reescribe por completo) llama HOY a `botonOtroPdf()` dos
+veces. Como esta Task 5 renombra la función, esas dos llamadas quedan
+apuntando a un nombre que ya no existe, y el `grep` de arriba no podría dar
+0 sin tocarlas. Antes del `grep`, haz un cambio mínimo: dentro de
+`pintarResultados`, sustituye las dos apariciones de `botonOtroPdf()` por
+`botonVaciarTodo()`, **sin reescribir nada más de esa función** — el resto
+de su cuerpo (columnas, panel de anomalías, aviso de truncado) es
+responsabilidad de la Task 6, que sustituye la función entera y absorbe
+este cambio sin conflicto.
+
 - [ ] **Step 9: Commit**
 
 ```bash
