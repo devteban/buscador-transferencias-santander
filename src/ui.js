@@ -14,6 +14,7 @@ const APP = {
 };
 
 const COLUMNAS = [
+  { clave: 'archivo', titulo: 'Archivo', tipo: 'texto', visible: true },
   { clave: 'pagina', titulo: 'Pág.', tipo: 'num', visible: true },
   { clave: 'ordenante', titulo: 'Ordenante', tipo: 'texto', visible: true },
   { clave: 'importe', titulo: 'Importe', tipo: 'importe', visible: true },
@@ -38,6 +39,8 @@ COLUMNAS.push(
     visible: false, extra: true },
   { clave: 'contravalor', titulo: 'Contravalor', tipo: 'moneda',
     visible: false, extra: true },
+  { clave: 'formato', titulo: 'Formato', tipo: 'texto', visible: false, extra: false },
+  { clave: 'fila', titulo: 'Fila', tipo: 'num', visible: false, extra: false },
 );
 
 /** Valor de una columna, venga del registro o de registro.extra. */
@@ -632,7 +635,7 @@ function botonVaciarTodo() {
   return boton;
 }
 
-function pintarResultados(segundos) {
+function pintarResultados() {
   const app = document.getElementById('app');
   app.textContent = '';
 
@@ -640,9 +643,10 @@ function pintarResultados(segundos) {
     app.append(
       el('h1', { textContent: 'Buscador de transferencias' }),
       el('p', { className: 'aviso',
-        textContent: 'Ninguna página encajó en el molde esperado. '
+        textContent: 'Ninguna página encajó en ningún formato conocido. '
           + 'Puede que este PDF tenga otro formato, o que sea un escaneo '
           + 'sin capa de texto.' }),
+      botonAnadirMas(),
       botonVaciarTodo(),
       panelAnomalias(),
     );
@@ -657,11 +661,11 @@ function pintarResultados(segundos) {
         + '«Columnas» para exportar.');
       return;
     }
-    const archivosEnFilas = [...new Set(APP.filas.map(r => r.archivo))];
-    const nombreCsv = archivosEnFilas.length === 1
-      ? `${archivosEnFilas[0].replace(/\.pdf$/i, '')}-filtrado.csv`
+    const archivos = [...new Set(APP.filas.map(r => r.archivo))];
+    const nombre = archivos.length === 1
+      ? `${archivos[0].replace(/\.pdf$/i, '')}-filtrado.csv`
       : 'buscador-filtrado.csv';
-    descargar(nombreCsv, generarCsv(APP.filas, visibles), 'text/csv;charset=utf-8');
+    descargar(nombre, generarCsv(APP.filas, visibles), 'text/csv;charset=utf-8');
   });
 
   const exportarPdf = el('button', { textContent: 'Exportar PDF' });
@@ -669,19 +673,35 @@ function pintarResultados(segundos) {
     exportarPdfFiltrado(APP.filas, exportarPdf);
   });
 
-  app.append(
+  const archivosCargados = new Set(APP.registros.map(r => r.archivo));
+  const hayMovimientos = APP.registros.some(r => r.formato === 'movimientos');
+
+  const cabecera = [
     el('h1', { textContent: 'Buscador de transferencias' }),
     el('p', { className: 'sub',
       textContent: `${APP.registros.length} transferencias de `
-        + `${APP.documentosPorArchivo.size} `
-        + `${APP.documentosPorArchivo.size === 1 ? 'archivo' : 'archivos'}` }),
-  );
+        + `${archivosCargados.size} ${archivosCargados.size === 1 ? 'archivo' : 'archivos'}` }),
+  ];
+  // Anadido durante la ronda de fix de la Task 5: si algun archivo de la
+  // ultima tanda cargada fallo, queda registrado en APP.fallosCarga y hay
+  // que seguir mostrandolo aqui -- si no, esta sustitucion completa de
+  // pintarResultados lo haria desaparecer en silencio.
   if (APP.fallosCarga && APP.fallosCarga.length > 0) {
-    app.append(el('p', { className: 'aviso',
+    cabecera.push(el('p', { className: 'aviso',
       textContent: 'No se pudieron cargar: ' + APP.fallosCarga
         .map(f => `${f.archivo} (${f.motivo})`).join(', ') }));
   }
+  if (hayMovimientos) {
+    cabecera.push(el('p', { className: 'sub aviso',
+      textContent: 'Aviso: en el listado de movimientos, el concepto puede '
+        + 'venir truncado en el propio PDF. Si buscas una palabra que '
+        + 'estuviera al final de un concepto largo, esa fila podría no '
+        + 'aparecer.' }));
+  }
+
   app.append(
+    ...cabecera,
+    botonAnadirMas(),
     botonVaciarTodo(),
     panelAnomalias(),
     pintarFiltros(refrescar),
@@ -694,11 +714,27 @@ function pintarResultados(segundos) {
   refrescar();
 }
 
+/** Boton para anadir mas PDF sin perder lo ya cargado: reutiliza la misma
+ * zona de arrastre/seleccion multiple que la pantalla inicial. */
+function botonAnadirMas() {
+  const entrada = el('input', { type: 'file', accept: 'application/pdf',
+                                multiple: true, className: 'oculto' });
+  const boton = el('button', { textContent: 'Añadir más PDF' });
+  const estado = el('span', { className: 'sub' });
+  const barra = el('div', { className: 'barra oculto' }, [el('i')]);
+  boton.addEventListener('click', () => entrada.click());
+  entrada.addEventListener('change', async e => {
+    if (!e.target.files.length) return;
+    await procesarArchivos([...e.target.files], estado, barra);
+  });
+  return el('span', {}, [boton, entrada, barra, estado]);
+}
+
 function panelAnomalias() {
   const cont = el('div');
   if (APP.anomalias.length === 0) {
     cont.append(el('p', { className: 'sub',
-      textContent: 'Todas las páginas encajaron en el molde.' }));
+      textContent: 'Todas las páginas encajaron en algún formato conocido.' }));
     return cont;
   }
   const porMotivo = {};
@@ -710,13 +746,15 @@ function panelAnomalias() {
 
   const det = el('details');
   det.append(el('summary', { className: 'aviso',
-    textContent: `${APP.anomalias.length} páginas no encajaron `
-      + `en el molde (${resumen})` }));
+    textContent: `${APP.anomalias.length} avisos (${resumen})` }));
   const lista = el('ul');
   for (const a of APP.anomalias.slice(0, 200)) {
     const campos = a.camposFaltantes.length
       ? ` — falta: ${a.camposFaltantes.join(', ')}` : '';
-    lista.append(el('li', { textContent: `Página ${a.pagina}: ${a.motivo}${campos}` }));
+    const fila = a.fila ? `, fila ${a.fila}` : '';
+    lista.append(el('li', {
+      textContent: `${a.archivo}, página ${a.pagina}${fila}: ${a.motivo}${campos}`,
+    }));
   }
   if (APP.anomalias.length > 200) {
     lista.append(el('li', { className: 'sub',
