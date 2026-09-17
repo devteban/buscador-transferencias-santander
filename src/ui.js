@@ -8,6 +8,9 @@ const APP = {
   // falta saber de que archivo viene cada pagina para exportar a PDF: cada
   // fila puede pertenecer a un archivo distinto (Task 5).
   documentosPorArchivo: new Map(),
+  // Archivos que fallaron en la ultima llamada a procesarArchivos, para que
+  // pintarResultados pueda avisar de forma persistente (Task 5).
+  fallosCarga: [],
 };
 
 const COLUMNAS = [
@@ -243,6 +246,7 @@ function abrirDocumento(datos) {
 async function procesarArchivos(archivos, estado, barra) {
   barra.classList.remove('oculto');
   let huboExito = false;
+  const fallos = [];
   for (let i = 0; i < archivos.length; i++) {
     const archivo = archivos[i];
     const prefijo = archivos.length > 1
@@ -250,6 +254,16 @@ async function procesarArchivos(archivos, estado, barra) {
     estado.textContent = prefijo + 'Abriendo el PDF...';
     estado.className = 'sub';
     try {
+      if (APP.documentosPorArchivo.has(archivo.name)) {
+        // Recargar el mismo nombre se trata como sustituir ese archivo: se
+        // destruye el documento viejo (si no, queda huerfano y nunca se
+        // libera) y se purgan sus filas anteriores (si no, las filas
+        // viejas seguirian apuntando al archivo nuevo al exportar, con
+        // paginas equivocadas y sin ningun aviso).
+        APP.documentosPorArchivo.get(archivo.name).documentoPdf.destroy();
+        APP.registros = APP.registros.filter(r => r.archivo !== archivo.name);
+        APP.anomalias = APP.anomalias.filter(a => a.archivo !== archivo.name);
+      }
       const datos = new Uint8Array(await archivo.arrayBuffer());
       const doc = await abrirDocumento(datos.slice());
       APP.documentosPorArchivo.set(archivo.name, { datosPdf: datos, documentoPdf: doc });
@@ -278,11 +292,13 @@ async function procesarArchivos(archivos, estado, barra) {
           + 'servir la carpeta con python3 -m http.server, y abre '
           + 'http://localhost:8000/buscador.html';
       }
+      fallos.push({ archivo: archivo.name, motivo: nombre || 'error desconocido' });
       // Un archivo que falla no aborta el resto de la cola.
       if (i < archivos.length - 1) continue;
     }
   }
   barra.classList.add('oculto');
+  APP.fallosCarga = fallos;
   if (huboExito) pintarResultados();
 }
 
@@ -516,6 +532,9 @@ async function generarPdfVisual(filas, alProgresar) {
  * usa una copia visual como respaldo PARA TODO el resultado: mezclar
  * paginas copiadas directamente con paginas rasterizadas en el mismo PDF de
  * salida no aporta nada y complica el codigo sin necesidad.
+ * Las paginas de un mismo archivo salen en el orden en que aparecen en la
+ * tabla filtrada; los archivos entre si van en el orden de su primera
+ * aparicion en la tabla, no intercalados.
  */
 async function exportarPdfFiltrado(filas, boton) {
   if (typeof PDFLib === 'undefined' || filas.length === 0) {
@@ -638,9 +657,11 @@ function pintarResultados(segundos) {
         + '«Columnas» para exportar.');
       return;
     }
-    const base = APP.nombreArchivo.replace(/\.pdf$/i, '');
-    descargar(`${base}-filtrado.csv`, generarCsv(APP.filas, visibles),
-              'text/csv;charset=utf-8');
+    const archivosEnFilas = [...new Set(APP.filas.map(r => r.archivo))];
+    const nombreCsv = archivosEnFilas.length === 1
+      ? `${archivosEnFilas[0].replace(/\.pdf$/i, '')}-filtrado.csv`
+      : 'buscador-filtrado.csv';
+    descargar(nombreCsv, generarCsv(APP.filas, visibles), 'text/csv;charset=utf-8');
   });
 
   const exportarPdf = el('button', { textContent: 'Exportar PDF' });
@@ -652,7 +673,15 @@ function pintarResultados(segundos) {
     el('h1', { textContent: 'Buscador de transferencias' }),
     el('p', { className: 'sub',
       textContent: `${APP.registros.length} transferencias de `
-        + `${APP.nombreArchivo}, procesadas en ${segundos} s` }),
+        + `${APP.documentosPorArchivo.size} `
+        + `${APP.documentosPorArchivo.size === 1 ? 'archivo' : 'archivos'}` }),
+  );
+  if (APP.fallosCarga && APP.fallosCarga.length > 0) {
+    app.append(el('p', { className: 'aviso',
+      textContent: 'No se pudieron cargar: ' + APP.fallosCarga
+        .map(f => `${f.archivo} (${f.motivo})`).join(', ') }));
+  }
+  app.append(
     botonVaciarTodo(),
     panelAnomalias(),
     pintarFiltros(refrescar),
