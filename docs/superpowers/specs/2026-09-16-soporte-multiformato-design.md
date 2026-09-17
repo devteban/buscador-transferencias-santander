@@ -216,9 +216,20 @@ traer cargos. Se aceptan el signo delante (`-1.234,56`) y detrás
   *Añadir más PDF*.
 - Se añade un botón **Vaciar todo**, separado, porque descartar lo cargado
   es una acción destructiva y no debe compartir botón con añadir.
-- Si el mismo fichero se carga dos veces, sus filas aparecen dos veces. No se
-  deduplica: detectar duplicados entre extractos con rangos solapados es un
-  problema distinto y no se aborda aquí.
+- **Decisión revisada durante la implementación (Task 5), no la original de
+  este documento.** Se pensó primero que cargar el mismo fichero dos veces
+  duplicaría sus filas sin más, dejando la deduplicación de contenido
+  solapado como problema aparte. Al implementarlo se detectó un caso peor:
+  dos archivos **distintos** con el **mismo nombre** (habitual — el nombre
+  por defecto que da el banco) sustituían la entrada del `Map` sin destruir
+  el documento viejo ni purgar sus filas, así que exportar a PDF podía
+  copiar páginas del archivo nuevo para filas que en realidad vinieron del
+  viejo, en silencio. Se decidió que cargar un nombre ya presente
+  **sustituye** ese archivo (destruye el documento anterior, purga sus
+  filas y anomalías, carga el nuevo), con un aviso persistente en la
+  interfaz («Se sustituyó: archivo.pdf») para que nunca sea silencioso. La
+  deduplicación de contenido solapado entre archivos con nombres distintos
+  sigue fuera de alcance.
 
 ### Columnas
 
