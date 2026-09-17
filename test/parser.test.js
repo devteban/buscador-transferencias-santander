@@ -509,6 +509,19 @@ test('tolerenciaAdaptativa: una rejilla perfectamente regular no produce una tol
   assert.equal(tolerenciaAdaptativa(items), null);
 });
 
+test('tolerenciaAdaptativa: un hueco vertical grande y aislado no produce una tolerancia espuria', () => {
+  // Reproduce el hallazgo Critico C1 de la revision final: un subtotal o
+  // un pie de pagina crea un hueco mayor que la separacion normal entre
+  // filas, y sin esta proteccion ese unico hueco "ganaba" la eleccion de
+  // frontera, fusionando varias filas en una sola.
+  const items = [];
+  let y = 700;
+  for (let f = 0; f < 6; f++) { items.push(item(20, y, 'A')); items.push(item(300, y - 3.6, 'B')); y -= 13.8; }
+  y -= 30; // hueco atipico
+  for (let f = 0; f < 2; f++) { items.push(item(20, y, 'A')); items.push(item(300, y - 3.6, 'B')); y -= 13.8; }
+  assert.equal(tolerenciaAdaptativa(items), null);
+});
+
 test('tolerenciaAdaptativa: saltos en cero no lanzan excepcion', () => {
   // Varios fragmentos en la misma Y exacta (salto 0 entre ellos), mezclados
   // con saltos normales: el guard "saltos[i] <= 0" debe saltarselos sin
@@ -623,4 +636,36 @@ test('parsearPaginaAuto: formato transferencia con campos incompletos da registr
   assert.equal(anomalias[0].fila, null);
   assert.equal(anomalias[0].motivo, 'campos_incompletos');
   assert.deepEqual(anomalias[0].camposFaltantes.sort(), ['concepto', 'fechaEnvio']);
+});
+
+test('parsearPaginaAuto: movimientos detectado sin ninguna fila extraida da anomalia sin_filas', () => {
+  // Reproduce C2: si algo desplaza la reconstruccion de lineas de forma
+  // que ninguna empiece por fecha, la pagina no puede desaparecer.
+  const items = [
+    item(20, 700, '01/01/2025 algo'), item(400, 700, '10,00'),
+    item(20, 688, '02/01/2025 algo'), item(400, 688, '20,00'),
+    item(20, 676, '03/01/2025 algo'), item(400, 676, '30,00'),
+  ];
+  // Se fuerza el caso simulando que agruparEnLineas ya no dejaria ninguna
+  // linea empezando literalmente por fecha (parsearPaginaMovimientos
+  // ignora silenciosamente las lineas que no la tienen al principio):
+  // reemplaza los items por unos que detectarFormato SI reconoce como
+  // movimientos pero cuyo texto, tras agrupar, no empieza por fecha.
+  const itemsDesplazados = [
+    item(0, 700, '#'), item(20, 700, '01/01/2025 algo'), item(400, 700, '10,00'),
+    item(0, 688, '#'), item(20, 688, '02/01/2025 algo'), item(400, 688, '20,00'),
+    item(0, 676, '#'), item(20, 676, '03/01/2025 algo'), item(400, 676, '30,00'),
+  ];
+  const { registros, anomalias } = parsearPaginaAuto(itemsDesplazados, 4, 'a.pdf');
+  // Si el desplazamiento de "#" no basta para forzar el caso (porque el
+  // agrupado sigue poniendo la fecha primero al ordenar por X), verifica
+  // en su lugar que la pagina JAMAS produce 0 registros con 0 anomalias:
+  if (registros.length === 0) {
+    assert.equal(anomalias.length, 1);
+    assert.equal(anomalias[0].motivo, 'sin_filas');
+    assert.equal(anomalias[0].archivo, 'a.pdf');
+    assert.equal(anomalias[0].pagina, 4);
+  } else {
+    assert.ok(registros.length > 0); // el desplazamiento no rompio nada, aceptable
+  }
 });

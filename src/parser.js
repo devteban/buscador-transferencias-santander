@@ -408,6 +408,16 @@ export function tolerenciaAdaptativa(items) {
     if (ratio > mejorRatio) { mejorRatio = ratio; mejorIdx = i; }
   }
   if (mejorIdx === -1) return null;
+  // El grupo "superior" (los saltos mayores, que deberian ser los saltos
+  // ENTRE filas) tiene que tener al menos 2 miembros para considerarse un
+  // patron real. Un unico hueco atipico -un subtotal, un pie de pagina, un
+  // salto de seccion- produciria el "mayor ratio" sin ser un patron: da
+  // una tolerancia que fusiona filas enteras sin ninguna anomalia visible.
+  // Se prefiere devolver null (cae a la tolerancia por defecto, que como
+  // poco deja constancia visible del problema en vez de fusionar en
+  // silencio) a confiar en una frontera sostenida por un solo dato.
+  const gruposSuperior = saltos.length - 1 - mejorIdx;
+  if (gruposSuperior < 2) return null;
   return (saltos[mejorIdx] + saltos[mejorIdx + 1]) / 2;
 }
 
@@ -441,6 +451,18 @@ function registroVacioMovimientos(pagina, archivo, fila) {
  * descripcion entera pasa a concepto y el ordenante queda sin rellenar.
  */
 function extraerOrdenanteConcepto(descripcion) {
+  // Solo se intenta extraer un ordenante si la descripcion empieza por una
+  // palabra que de verdad indica una transferencia (verificado contra el
+  // documento real: todas las filas de transferencia empiezan asi). " De "
+  // por si sola es una preposicion demasiado comun: anclarla sin mas
+  // fabricaria ordenantes falsos en filas de otro tipo (comisiones,
+  // recibos) y ademas BORRARIA la descripcion real de esas filas sin dejar
+  // rastro en concepto ni en conceptoBusqueda.
+  const PALABRAS_TRANSFERENCIA = /^(Transferencia|Traspaso|Abono|Ingreso)\b/;
+  if (!PALABRAS_TRANSFERENCIA.test(descripcion.trim())) {
+    const c = descripcion.trim();
+    return { ordenante: null, concepto: c || null };
+  }
   const iDe = descripcion.indexOf(' De ');
   if (iDe === -1) {
     const c = descripcion.trim();
@@ -479,7 +501,15 @@ function parsearFilaMovimiento(lineaTexto, pagina, archivo, fila) {
   if (isoOp) { reg.fechaOperacion = isoOp; reg.fechaOperacionTexto = fechas[0][0]; }
 
   let finFechas = fechas[0].index + fechas[0][0].length;
-  if (fechas.length >= 2) {
+  // fechas[1] solo se acepta como fecha valor si esta razonablemente cerca
+  // de la primera fecha (la misma zona de cabecera de la fila, separadas
+  // solo por espacios de columna): una fecha mucho mas adelante en la
+  // linea probablemente viene del texto libre de la descripcion, no de la
+  // columna real de fecha valor.
+  const MAX_DISTANCIA_ENTRE_FECHAS = 20;
+  const distanciaEntreFechas = fechas.length >= 2
+    ? fechas[1].index - (fechas[0].index + fechas[0][0].length) : Infinity;
+  if (fechas.length >= 2 && distanciaEntreFechas <= MAX_DISTANCIA_ENTRE_FECHAS) {
     const isoVal = normalizarFecha(fechas[1][0].replace(/\//g, '-'));
     if (isoVal) { reg.fechaValor = isoVal; reg.fechaValorTexto = fechas[1][0]; }
     finFechas = fechas[1].index + fechas[1][0].length;
@@ -520,6 +550,14 @@ function parsearFilaMovimiento(lineaTexto, pagina, archivo, fila) {
  * texto fijo de la pagina, no filas de datos con un campo roto.
  */
 export function parsearPaginaMovimientos(lineas, numeroPagina, archivo) {
+  // Aviso a nivel de pagina: si el molde incluye una columna de saldo (muy
+  // habitual en extractos reales, no vista en el documento con el que se
+  // diseño este parser), el importe se toma hoy como el ultimo token de la
+  // linea y confundiria el saldo con el importe real, sin ninguna anomalia.
+  // No se puede distinguir de forma fiable dentro de una sola fila; se
+  // avisa a nivel de pagina para que sea visible, no silencioso.
+  const tieneColumnaSaldo = (lineas || []).some(l => /\bSaldo\b/i.test(l.texto));
+
   const registros = [];
   const anomalias = [];
   let fila = 0;
@@ -536,6 +574,10 @@ export function parsearPaginaMovimientos(lineas, numeroPagina, archivo) {
         motivo: 'campos_incompletos', camposFaltantes: faltantes,
       });
     }
+  }
+  if (tieneColumnaSaldo && registros.length > 0) {
+    anomalias.push({ pagina: numeroPagina, archivo, fila: null,
+                     motivo: 'posible_columna_saldo', camposFaltantes: ['importe'] });
   }
   return { registros, anomalias };
 }
@@ -578,7 +620,15 @@ export function parsearPaginaAuto(items, numeroPagina, archivo) {
     const tolerancia = tolerenciaAdaptativa(utiles);
     const lineas = agruparEnLineas(
       utiles, tolerancia !== null ? { tolerancia } : undefined);
-    return parsearPaginaMovimientos(lineas, numeroPagina, archivo);
+    const resultado = parsearPaginaMovimientos(lineas, numeroPagina, archivo);
+    // Si la deteccion dijo "movimientos" pero no se extrajo ninguna fila,
+    // la pagina no puede desaparecer en silencio: la propia deteccion
+    // afirmo que era un listado de datos.
+    if (resultado.registros.length === 0) {
+      resultado.anomalias.push({ pagina: numeroPagina, archivo, fila: null,
+                                 motivo: 'sin_filas', camposFaltantes: [] });
+    }
+    return resultado;
   }
 
   return {

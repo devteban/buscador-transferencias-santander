@@ -146,3 +146,31 @@ test('parsearPaginaMovimientos: fecha embebida en la descripcion no se confunde 
   assert.equal(registros[0].importe, 500);
   assert.ok(registros[0].concepto.includes('123,45'));
 });
+
+test('parsearPaginaMovimientos: la palabra Saldo en la pagina genera aviso de posible columna no soportada', () => {
+  const lineas = paginaMovimientos([{}], {});
+  lineas.unshift(linea(770, 20, 'Saldo anterior: 5.000,00'));
+  const { anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
+  assert.ok(anomalias.some(a => a.motivo === 'posible_columna_saldo'));
+});
+
+test('parsearPaginaMovimientos: una comision o recibo no fabrica un ordenante falso ni pierde la descripcion', () => {
+  const lineas = paginaMovimientos([
+    { descripcion: 'Comision De Mantenimiento trimestral' },
+  ]);
+  const { registros } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
+  assert.equal(registros[0].ordenante, null);
+  assert.equal(registros[0].concepto, 'Comision De Mantenimiento trimestral');
+});
+
+test('parsearPaginaMovimientos: una fecha lejana en la descripcion no se confunde con fecha valor', () => {
+  const lineas = [
+    linea(700, 20, '16/03/2025', 90,
+      'Transferencia De Ayuntamiento De Villarriba, Concepto Factura de 05/12/2024',
+      600, '100,00'),
+  ];
+  const { registros, anomalias } = parsearPaginaMovimientos(lineas, 1, 'a.pdf');
+  assert.equal(registros[0].fechaOperacion, '2025-03-16');
+  assert.equal(registros[0].fechaValor, null);
+  assert.ok(anomalias.some(a => a.camposFaltantes.includes('fechaValor')));
+});

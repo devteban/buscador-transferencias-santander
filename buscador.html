@@ -524,6 +524,16 @@ function tolerenciaAdaptativa(items) {
     if (ratio > mejorRatio) { mejorRatio = ratio; mejorIdx = i; }
   }
   if (mejorIdx === -1) return null;
+  // El grupo "superior" (los saltos mayores, que deberian ser los saltos
+  // ENTRE filas) tiene que tener al menos 2 miembros para considerarse un
+  // patron real. Un unico hueco atipico -un subtotal, un pie de pagina, un
+  // salto de seccion- produciria el "mayor ratio" sin ser un patron: da
+  // una tolerancia que fusiona filas enteras sin ninguna anomalia visible.
+  // Se prefiere devolver null (cae a la tolerancia por defecto, que como
+  // poco deja constancia visible del problema en vez de fusionar en
+  // silencio) a confiar en una frontera sostenida por un solo dato.
+  const gruposSuperior = saltos.length - 1 - mejorIdx;
+  if (gruposSuperior < 2) return null;
   return (saltos[mejorIdx] + saltos[mejorIdx + 1]) / 2;
 }
 
@@ -557,6 +567,18 @@ function registroVacioMovimientos(pagina, archivo, fila) {
  * descripcion entera pasa a concepto y el ordenante queda sin rellenar.
  */
 function extraerOrdenanteConcepto(descripcion) {
+  // Solo se intenta extraer un ordenante si la descripcion empieza por una
+  // palabra que de verdad indica una transferencia (verificado contra el
+  // documento real: todas las filas de transferencia empiezan asi). " De "
+  // por si sola es una preposicion demasiado comun: anclarla sin mas
+  // fabricaria ordenantes falsos en filas de otro tipo (comisiones,
+  // recibos) y ademas BORRARIA la descripcion real de esas filas sin dejar
+  // rastro en concepto ni en conceptoBusqueda.
+  const PALABRAS_TRANSFERENCIA = /^(Transferencia|Traspaso|Abono|Ingreso)\b/;
+  if (!PALABRAS_TRANSFERENCIA.test(descripcion.trim())) {
+    const c = descripcion.trim();
+    return { ordenante: null, concepto: c || null };
+  }
   const iDe = descripcion.indexOf(' De ');
   if (iDe === -1) {
     const c = descripcion.trim();
@@ -595,7 +617,15 @@ function parsearFilaMovimiento(lineaTexto, pagina, archivo, fila) {
   if (isoOp) { reg.fechaOperacion = isoOp; reg.fechaOperacionTexto = fechas[0][0]; }
 
   let finFechas = fechas[0].index + fechas[0][0].length;
-  if (fechas.length >= 2) {
+  // fechas[1] solo se acepta como fecha valor si esta razonablemente cerca
+  // de la primera fecha (la misma zona de cabecera de la fila, separadas
+  // solo por espacios de columna): una fecha mucho mas adelante en la
+  // linea probablemente viene del texto libre de la descripcion, no de la
+  // columna real de fecha valor.
+  const MAX_DISTANCIA_ENTRE_FECHAS = 20;
+  const distanciaEntreFechas = fechas.length >= 2
+    ? fechas[1].index - (fechas[0].index + fechas[0][0].length) : Infinity;
+  if (fechas.length >= 2 && distanciaEntreFechas <= MAX_DISTANCIA_ENTRE_FECHAS) {
     const isoVal = normalizarFecha(fechas[1][0].replace(/\//g, '-'));
     if (isoVal) { reg.fechaValor = isoVal; reg.fechaValorTexto = fechas[1][0]; }
     finFechas = fechas[1].index + fechas[1][0].length;
@@ -636,6 +666,14 @@ function parsearFilaMovimiento(lineaTexto, pagina, archivo, fila) {
  * texto fijo de la pagina, no filas de datos con un campo roto.
  */
 function parsearPaginaMovimientos(lineas, numeroPagina, archivo) {
+  // Aviso a nivel de pagina: si el molde incluye una columna de saldo (muy
+  // habitual en extractos reales, no vista en el documento con el que se
+  // diseño este parser), el importe se toma hoy como el ultimo token de la
+  // linea y confundiria el saldo con el importe real, sin ninguna anomalia.
+  // No se puede distinguir de forma fiable dentro de una sola fila; se
+  // avisa a nivel de pagina para que sea visible, no silencioso.
+  const tieneColumnaSaldo = (lineas || []).some(l => /\bSaldo\b/i.test(l.texto));
+
   const registros = [];
   const anomalias = [];
   let fila = 0;
@@ -652,6 +690,10 @@ function parsearPaginaMovimientos(lineas, numeroPagina, archivo) {
         motivo: 'campos_incompletos', camposFaltantes: faltantes,
       });
     }
+  }
+  if (tieneColumnaSaldo && registros.length > 0) {
+    anomalias.push({ pagina: numeroPagina, archivo, fila: null,
+                     motivo: 'posible_columna_saldo', camposFaltantes: ['importe'] });
   }
   return { registros, anomalias };
 }
@@ -694,7 +736,15 @@ function parsearPaginaAuto(items, numeroPagina, archivo) {
     const tolerancia = tolerenciaAdaptativa(utiles);
     const lineas = agruparEnLineas(
       utiles, tolerancia !== null ? { tolerancia } : undefined);
-    return parsearPaginaMovimientos(lineas, numeroPagina, archivo);
+    const resultado = parsearPaginaMovimientos(lineas, numeroPagina, archivo);
+    // Si la deteccion dijo "movimientos" pero no se extrajo ninguna fila,
+    // la pagina no puede desaparecer en silencio: la propia deteccion
+    // afirmo que era un listado de datos.
+    if (resultado.registros.length === 0) {
+      resultado.anomalias.push({ pagina: numeroPagina, archivo, fila: null,
+                                 motivo: 'sin_filas', camposFaltantes: [] });
+    }
+    return resultado;
   }
 
   return {
@@ -717,6 +767,14 @@ const APP = {
   // Archivos que fallaron en la ultima llamada a procesarArchivos, para que
   // pintarResultados pueda avisar de forma persistente (Task 5).
   fallosCarga: [],
+  // Archivos que sustituyeron a otro con el mismo nombre en la ultima
+  // llamada a procesarArchivos, para avisar de forma persistente (I2).
+  sustituciones: [],
+  // Evita que "Vaciar todo" (o una segunda carga) se solape con una carga
+  // en curso: extraerDeDocumento cede el hilo entre lotes, y sin esta
+  // bandera una carga interrumpida podria volcar registros huerfanos
+  // sobre el APP ya vaciado (I3).
+  procesando: false,
 };
 
 const COLUMNAS = [
@@ -953,62 +1011,76 @@ function abrirDocumento(datos) {
  * PDF sabiendo de que archivo viene cada pagina.
  */
 async function procesarArchivos(archivos, estado, barra) {
-  barra.classList.remove('oculto');
-  let huboExito = false;
-  const fallos = [];
-  for (let i = 0; i < archivos.length; i++) {
-    const archivo = archivos[i];
-    const prefijo = archivos.length > 1
-      ? `Archivo ${i + 1} de ${archivos.length} (${archivo.name}): ` : '';
-    estado.textContent = prefijo + 'Abriendo el PDF...';
-    estado.className = 'sub';
-    try {
-      if (APP.documentosPorArchivo.has(archivo.name)) {
-        // Recargar el mismo nombre se trata como sustituir ese archivo: se
-        // destruye el documento viejo (si no, queda huerfano y nunca se
-        // libera) y se purgan sus filas anteriores (si no, las filas
-        // viejas seguirian apuntando al archivo nuevo al exportar, con
-        // paginas equivocadas y sin ningun aviso).
-        APP.documentosPorArchivo.get(archivo.name).documentoPdf.destroy();
-        APP.registros = APP.registros.filter(r => r.archivo !== archivo.name);
-        APP.anomalias = APP.anomalias.filter(a => a.archivo !== archivo.name);
+  // Evita que dos cargas se solapen (por ejemplo, pulsar "Añadir más PDF"
+  // dos veces) y, sobre todo, que "Vaciar todo" pueda ejecutarse a mitad de
+  // una carga: extraerDeDocumento cede el hilo entre lotes, y sin esta
+  // bandera una carga interrumpida por un vaciado podria volcar registros
+  // huerfanos sobre el APP ya vaciado (I3).
+  if (APP.procesando) return;
+  APP.procesando = true;
+  try {
+    barra.classList.remove('oculto');
+    let huboExito = false;
+    const fallos = [];
+    const sustituciones = [];
+    for (let i = 0; i < archivos.length; i++) {
+      const archivo = archivos[i];
+      const prefijo = archivos.length > 1
+        ? `Archivo ${i + 1} de ${archivos.length} (${archivo.name}): ` : '';
+      estado.textContent = prefijo + 'Abriendo el PDF...';
+      estado.className = 'sub';
+      try {
+        if (APP.documentosPorArchivo.has(archivo.name)) {
+          // Recargar el mismo nombre se trata como sustituir ese archivo: se
+          // destruye el documento viejo (si no, queda huerfano y nunca se
+          // libera) y se purgan sus filas anteriores (si no, las filas
+          // viejas seguirian apuntando al archivo nuevo al exportar, con
+          // paginas equivocadas y sin ningun aviso).
+          APP.documentosPorArchivo.get(archivo.name).documentoPdf.destroy();
+          APP.registros = APP.registros.filter(r => r.archivo !== archivo.name);
+          APP.anomalias = APP.anomalias.filter(a => a.archivo !== archivo.name);
+          sustituciones.push(archivo.name);
+        }
+        const datos = new Uint8Array(await archivo.arrayBuffer());
+        const doc = await abrirDocumento(datos.slice());
+        APP.documentosPorArchivo.set(archivo.name, { datosPdf: datos, documentoPdf: doc });
+        const { registros, anomalias } = await extraerDeDocumento(doc, archivo.name,
+          (hechas, total) => {
+            estado.textContent = `${prefijo}Página ${hechas} de ${total}`;
+            barra.firstChild.style.width = (hechas / total * 100) + '%';
+          });
+        APP.registros.push(...registros);
+        APP.anomalias.push(...anomalias);
+        huboExito = true;
+      } catch (err) {
+        estado.className = 'sub aviso';
+        const nombre = err && err.name;
+        if (nombre === 'PasswordException') {
+          estado.textContent = `${prefijo}PDF protegido: no se introdujo la contraseña.`;
+        } else if (nombre === 'InvalidPDFException') {
+          estado.textContent = `${prefijo}Ese archivo no parece un PDF válido.`;
+        } else {
+          // No se interpola err.message: ver el comentario de abrirDocumento.
+          estado.textContent = `${prefijo}No se pudo procesar este PDF. `
+            + 'Puede estar dañado o tener un formato que la herramienta no '
+            + `reconoce. (${nombre || 'error desconocido'}) Si el problema `
+            + 'persiste, puede deberse a que el navegador bloquea el arranque '
+            + 'del motor de PDF al abrir el archivo directamente: prueba a '
+            + 'servir la carpeta con python3 -m http.server, y abre '
+            + 'http://localhost:8000/buscador.html';
+        }
+        fallos.push({ archivo: archivo.name, motivo: nombre || 'error desconocido' });
+        // Un archivo que falla no aborta el resto de la cola.
+        if (i < archivos.length - 1) continue;
       }
-      const datos = new Uint8Array(await archivo.arrayBuffer());
-      const doc = await abrirDocumento(datos.slice());
-      APP.documentosPorArchivo.set(archivo.name, { datosPdf: datos, documentoPdf: doc });
-      const { registros, anomalias } = await extraerDeDocumento(doc, archivo.name,
-        (hechas, total) => {
-          estado.textContent = `${prefijo}Página ${hechas} de ${total}`;
-          barra.firstChild.style.width = (hechas / total * 100) + '%';
-        });
-      APP.registros.push(...registros);
-      APP.anomalias.push(...anomalias);
-      huboExito = true;
-    } catch (err) {
-      estado.className = 'sub aviso';
-      const nombre = err && err.name;
-      if (nombre === 'PasswordException') {
-        estado.textContent = `${prefijo}PDF protegido: no se introdujo la contraseña.`;
-      } else if (nombre === 'InvalidPDFException') {
-        estado.textContent = `${prefijo}Ese archivo no parece un PDF válido.`;
-      } else {
-        // No se interpola err.message: ver el comentario de abrirDocumento.
-        estado.textContent = `${prefijo}No se pudo procesar este PDF. `
-          + 'Puede estar dañado o tener un formato que la herramienta no '
-          + `reconoce. (${nombre || 'error desconocido'}) Si el problema `
-          + 'persiste, puede deberse a que el navegador bloquea el arranque '
-          + 'del motor de PDF al abrir el archivo directamente: prueba a '
-          + 'servir la carpeta con python3 -m http.server, y abre '
-          + 'http://localhost:8000/buscador.html';
-      }
-      fallos.push({ archivo: archivo.name, motivo: nombre || 'error desconocido' });
-      // Un archivo que falla no aborta el resto de la cola.
-      if (i < archivos.length - 1) continue;
     }
+    barra.classList.add('oculto');
+    APP.fallosCarga = fallos;
+    APP.sustituciones = sustituciones;
+    if (huboExito) pintarResultados();
+  } finally {
+    APP.procesando = false;
   }
-  barra.classList.add('oculto');
-  APP.fallosCarga = fallos;
-  if (huboExito) pintarResultados();
 }
 
 function campo(etiqueta, props, alCambiar) {
@@ -1313,7 +1385,7 @@ function refrescar() {
   const filas = ordenar(filtrar(APP.registros, APP.criterios), APP.orden);
   APP.filas = filas;
   document.getElementById('contador').textContent =
-    `${filas.length} de ${APP.registros.length} transferencias`;
+    `${filas.length} de ${APP.registros.length} registros`;
   const cont = document.getElementById('tabla');
   cont.textContent = '';
   if (columnasVisibles().length === 0) {
@@ -1329,6 +1401,10 @@ function refrescar() {
 function botonVaciarTodo() {
   const boton = el('button', { textContent: 'Vaciar todo' });
   boton.addEventListener('click', () => {
+    if (APP.procesando) {
+      alert('Espera a que termine de cargar antes de vaciar.');
+      return;
+    }
     clearTimeout(temporizadorFiltro);
     APP.registros = []; APP.anomalias = []; APP.criterios = {};
     for (const { documentoPdf } of APP.documentosPorArchivo.values()) {
@@ -1347,7 +1423,7 @@ function pintarResultados() {
 
   if (APP.registros.length === 0) {
     app.append(
-      el('h1', { textContent: 'Buscador de transferencias' }),
+      el('h1', { textContent: 'Buscador de registros' }),
       el('p', { className: 'aviso',
         textContent: 'Ninguna página encajó en ningún formato conocido. '
           + 'Puede que este PDF tenga otro formato, o que sea un escaneo '
@@ -1383,9 +1459,9 @@ function pintarResultados() {
   const hayMovimientos = APP.registros.some(r => r.formato === 'movimientos');
 
   const cabecera = [
-    el('h1', { textContent: 'Buscador de transferencias' }),
+    el('h1', { textContent: 'Buscador de registros' }),
     el('p', { className: 'sub',
-      textContent: `${APP.registros.length} transferencias de `
+      textContent: `${APP.registros.length} registros de `
         + `${archivosCargados.size} ${archivosCargados.size === 1 ? 'archivo' : 'archivos'}` }),
   ];
   // Anadido durante la ronda de fix de la Task 5: si algun archivo de la
@@ -1396,6 +1472,11 @@ function pintarResultados() {
     cabecera.push(el('p', { className: 'aviso',
       textContent: 'No se pudieron cargar: ' + APP.fallosCarga
         .map(f => `${f.archivo} (${f.motivo})`).join(', ') }));
+  }
+  if (APP.sustituciones && APP.sustituciones.length > 0) {
+    cabecera.push(el('p', { className: 'sub aviso',
+      textContent: 'Se sustituyó (ya había un archivo con el mismo nombre): '
+        + APP.sustituciones.join(', ') }));
   }
   if (hayMovimientos) {
     cabecera.push(el('p', { className: 'sub aviso',
@@ -1431,6 +1512,10 @@ function botonAnadirMas() {
   boton.addEventListener('click', () => entrada.click());
   entrada.addEventListener('change', async e => {
     if (!e.target.files.length) return;
+    if (APP.procesando) {
+      alert('Espera a que termine la carga en curso.');
+      return;
+    }
     await procesarArchivos([...e.target.files], estado, barra);
   });
   return el('span', {}, [boton, entrada, barra, estado]);

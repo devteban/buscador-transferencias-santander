@@ -11,6 +11,14 @@ const APP = {
   // Archivos que fallaron en la ultima llamada a procesarArchivos, para que
   // pintarResultados pueda avisar de forma persistente (Task 5).
   fallosCarga: [],
+  // Archivos que sustituyeron a otro con el mismo nombre en la ultima
+  // llamada a procesarArchivos, para avisar de forma persistente (I2).
+  sustituciones: [],
+  // Evita que "Vaciar todo" (o una segunda carga) se solape con una carga
+  // en curso: extraerDeDocumento cede el hilo entre lotes, y sin esta
+  // bandera una carga interrumpida podria volcar registros huerfanos
+  // sobre el APP ya vaciado (I3).
+  procesando: false,
 };
 
 const COLUMNAS = [
@@ -247,62 +255,76 @@ function abrirDocumento(datos) {
  * PDF sabiendo de que archivo viene cada pagina.
  */
 async function procesarArchivos(archivos, estado, barra) {
-  barra.classList.remove('oculto');
-  let huboExito = false;
-  const fallos = [];
-  for (let i = 0; i < archivos.length; i++) {
-    const archivo = archivos[i];
-    const prefijo = archivos.length > 1
-      ? `Archivo ${i + 1} de ${archivos.length} (${archivo.name}): ` : '';
-    estado.textContent = prefijo + 'Abriendo el PDF...';
-    estado.className = 'sub';
-    try {
-      if (APP.documentosPorArchivo.has(archivo.name)) {
-        // Recargar el mismo nombre se trata como sustituir ese archivo: se
-        // destruye el documento viejo (si no, queda huerfano y nunca se
-        // libera) y se purgan sus filas anteriores (si no, las filas
-        // viejas seguirian apuntando al archivo nuevo al exportar, con
-        // paginas equivocadas y sin ningun aviso).
-        APP.documentosPorArchivo.get(archivo.name).documentoPdf.destroy();
-        APP.registros = APP.registros.filter(r => r.archivo !== archivo.name);
-        APP.anomalias = APP.anomalias.filter(a => a.archivo !== archivo.name);
+  // Evita que dos cargas se solapen (por ejemplo, pulsar "Añadir más PDF"
+  // dos veces) y, sobre todo, que "Vaciar todo" pueda ejecutarse a mitad de
+  // una carga: extraerDeDocumento cede el hilo entre lotes, y sin esta
+  // bandera una carga interrumpida por un vaciado podria volcar registros
+  // huerfanos sobre el APP ya vaciado (I3).
+  if (APP.procesando) return;
+  APP.procesando = true;
+  try {
+    barra.classList.remove('oculto');
+    let huboExito = false;
+    const fallos = [];
+    const sustituciones = [];
+    for (let i = 0; i < archivos.length; i++) {
+      const archivo = archivos[i];
+      const prefijo = archivos.length > 1
+        ? `Archivo ${i + 1} de ${archivos.length} (${archivo.name}): ` : '';
+      estado.textContent = prefijo + 'Abriendo el PDF...';
+      estado.className = 'sub';
+      try {
+        if (APP.documentosPorArchivo.has(archivo.name)) {
+          // Recargar el mismo nombre se trata como sustituir ese archivo: se
+          // destruye el documento viejo (si no, queda huerfano y nunca se
+          // libera) y se purgan sus filas anteriores (si no, las filas
+          // viejas seguirian apuntando al archivo nuevo al exportar, con
+          // paginas equivocadas y sin ningun aviso).
+          APP.documentosPorArchivo.get(archivo.name).documentoPdf.destroy();
+          APP.registros = APP.registros.filter(r => r.archivo !== archivo.name);
+          APP.anomalias = APP.anomalias.filter(a => a.archivo !== archivo.name);
+          sustituciones.push(archivo.name);
+        }
+        const datos = new Uint8Array(await archivo.arrayBuffer());
+        const doc = await abrirDocumento(datos.slice());
+        APP.documentosPorArchivo.set(archivo.name, { datosPdf: datos, documentoPdf: doc });
+        const { registros, anomalias } = await extraerDeDocumento(doc, archivo.name,
+          (hechas, total) => {
+            estado.textContent = `${prefijo}Página ${hechas} de ${total}`;
+            barra.firstChild.style.width = (hechas / total * 100) + '%';
+          });
+        APP.registros.push(...registros);
+        APP.anomalias.push(...anomalias);
+        huboExito = true;
+      } catch (err) {
+        estado.className = 'sub aviso';
+        const nombre = err && err.name;
+        if (nombre === 'PasswordException') {
+          estado.textContent = `${prefijo}PDF protegido: no se introdujo la contraseña.`;
+        } else if (nombre === 'InvalidPDFException') {
+          estado.textContent = `${prefijo}Ese archivo no parece un PDF válido.`;
+        } else {
+          // No se interpola err.message: ver el comentario de abrirDocumento.
+          estado.textContent = `${prefijo}No se pudo procesar este PDF. `
+            + 'Puede estar dañado o tener un formato que la herramienta no '
+            + `reconoce. (${nombre || 'error desconocido'}) Si el problema `
+            + 'persiste, puede deberse a que el navegador bloquea el arranque '
+            + 'del motor de PDF al abrir el archivo directamente: prueba a '
+            + 'servir la carpeta con python3 -m http.server, y abre '
+            + 'http://localhost:8000/buscador.html';
+        }
+        fallos.push({ archivo: archivo.name, motivo: nombre || 'error desconocido' });
+        // Un archivo que falla no aborta el resto de la cola.
+        if (i < archivos.length - 1) continue;
       }
-      const datos = new Uint8Array(await archivo.arrayBuffer());
-      const doc = await abrirDocumento(datos.slice());
-      APP.documentosPorArchivo.set(archivo.name, { datosPdf: datos, documentoPdf: doc });
-      const { registros, anomalias } = await extraerDeDocumento(doc, archivo.name,
-        (hechas, total) => {
-          estado.textContent = `${prefijo}Página ${hechas} de ${total}`;
-          barra.firstChild.style.width = (hechas / total * 100) + '%';
-        });
-      APP.registros.push(...registros);
-      APP.anomalias.push(...anomalias);
-      huboExito = true;
-    } catch (err) {
-      estado.className = 'sub aviso';
-      const nombre = err && err.name;
-      if (nombre === 'PasswordException') {
-        estado.textContent = `${prefijo}PDF protegido: no se introdujo la contraseña.`;
-      } else if (nombre === 'InvalidPDFException') {
-        estado.textContent = `${prefijo}Ese archivo no parece un PDF válido.`;
-      } else {
-        // No se interpola err.message: ver el comentario de abrirDocumento.
-        estado.textContent = `${prefijo}No se pudo procesar este PDF. `
-          + 'Puede estar dañado o tener un formato que la herramienta no '
-          + `reconoce. (${nombre || 'error desconocido'}) Si el problema `
-          + 'persiste, puede deberse a que el navegador bloquea el arranque '
-          + 'del motor de PDF al abrir el archivo directamente: prueba a '
-          + 'servir la carpeta con python3 -m http.server, y abre '
-          + 'http://localhost:8000/buscador.html';
-      }
-      fallos.push({ archivo: archivo.name, motivo: nombre || 'error desconocido' });
-      // Un archivo que falla no aborta el resto de la cola.
-      if (i < archivos.length - 1) continue;
     }
+    barra.classList.add('oculto');
+    APP.fallosCarga = fallos;
+    APP.sustituciones = sustituciones;
+    if (huboExito) pintarResultados();
+  } finally {
+    APP.procesando = false;
   }
-  barra.classList.add('oculto');
-  APP.fallosCarga = fallos;
-  if (huboExito) pintarResultados();
 }
 
 function campo(etiqueta, props, alCambiar) {
@@ -607,7 +629,7 @@ function refrescar() {
   const filas = ordenar(filtrar(APP.registros, APP.criterios), APP.orden);
   APP.filas = filas;
   document.getElementById('contador').textContent =
-    `${filas.length} de ${APP.registros.length} transferencias`;
+    `${filas.length} de ${APP.registros.length} registros`;
   const cont = document.getElementById('tabla');
   cont.textContent = '';
   if (columnasVisibles().length === 0) {
@@ -623,6 +645,10 @@ function refrescar() {
 function botonVaciarTodo() {
   const boton = el('button', { textContent: 'Vaciar todo' });
   boton.addEventListener('click', () => {
+    if (APP.procesando) {
+      alert('Espera a que termine de cargar antes de vaciar.');
+      return;
+    }
     clearTimeout(temporizadorFiltro);
     APP.registros = []; APP.anomalias = []; APP.criterios = {};
     for (const { documentoPdf } of APP.documentosPorArchivo.values()) {
@@ -641,7 +667,7 @@ function pintarResultados() {
 
   if (APP.registros.length === 0) {
     app.append(
-      el('h1', { textContent: 'Buscador de transferencias' }),
+      el('h1', { textContent: 'Buscador de registros' }),
       el('p', { className: 'aviso',
         textContent: 'Ninguna página encajó en ningún formato conocido. '
           + 'Puede que este PDF tenga otro formato, o que sea un escaneo '
@@ -677,9 +703,9 @@ function pintarResultados() {
   const hayMovimientos = APP.registros.some(r => r.formato === 'movimientos');
 
   const cabecera = [
-    el('h1', { textContent: 'Buscador de transferencias' }),
+    el('h1', { textContent: 'Buscador de registros' }),
     el('p', { className: 'sub',
-      textContent: `${APP.registros.length} transferencias de `
+      textContent: `${APP.registros.length} registros de `
         + `${archivosCargados.size} ${archivosCargados.size === 1 ? 'archivo' : 'archivos'}` }),
   ];
   // Anadido durante la ronda de fix de la Task 5: si algun archivo de la
@@ -690,6 +716,11 @@ function pintarResultados() {
     cabecera.push(el('p', { className: 'aviso',
       textContent: 'No se pudieron cargar: ' + APP.fallosCarga
         .map(f => `${f.archivo} (${f.motivo})`).join(', ') }));
+  }
+  if (APP.sustituciones && APP.sustituciones.length > 0) {
+    cabecera.push(el('p', { className: 'sub aviso',
+      textContent: 'Se sustituyó (ya había un archivo con el mismo nombre): '
+        + APP.sustituciones.join(', ') }));
   }
   if (hayMovimientos) {
     cabecera.push(el('p', { className: 'sub aviso',
@@ -725,6 +756,10 @@ function botonAnadirMas() {
   boton.addEventListener('click', () => entrada.click());
   entrada.addEventListener('change', async e => {
     if (!e.target.files.length) return;
+    if (APP.procesando) {
+      alert('Espera a que termine la carga en curso.');
+      return;
+    }
     await procesarArchivos([...e.target.files], estado, barra);
   });
   return el('span', {}, [boton, entrada, barra, estado]);
