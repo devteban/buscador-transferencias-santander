@@ -6,7 +6,7 @@ import { parsearPaginaAuto } from '../src/parser.js';
 const paginas = JSON.parse(readFileSync(
   new URL('./fixtures/items-pdf-prueba-movimientos.json', import.meta.url)));
 
-test('integracion movimientos: recorrido completo desde un PDF real hasta los registros', () => {
+test('integracion movimientos: recorrido completo desde el PDF de prueba hasta los registros', () => {
   assert.equal(paginas.length, 1);
   const { registros, anomalias } = parsearPaginaAuto(paginas[0], 1, 'prueba.pdf');
 

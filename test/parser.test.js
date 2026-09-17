@@ -434,14 +434,18 @@ test('detectarFormato: pagina vacia o sin ninguna forma reconocible da null', ()
 });
 
 test('tolerenciaAdaptativa: separa dos grupos de saltos y devuelve el punto medio', () => {
-  // Filas de dos sub-alturas (salto 3.6 dentro, salto 10.2 entre filas),
-  // reproduciendo la geometria medida en el documento real.
+  // Filas de dos sub-alturas: salto 3.6 dentro de la fila, salto 10.2 entre
+  // el final de una fila y el principio de la siguiente (medido en el
+  // documento real). El paso TOTAL entre filas (de un "y" al siguiente) es
+  // 3.6 + 10.2 = 13.8, no 10.2 -- ver la nota de geometria en paginaMolde2/
+  // paginaMovimientos, corregida tras un defecto real detectado en la
+  // Task 3 de la rama multiformato.
   const items = [];
   let y = 700;
   for (let f = 0; f < 6; f++) {
     items.push(item(20, y, 'A'));
     items.push(item(300, y - 3.6, 'B'));
-    y -= 10.2;
+    y -= 13.8;
   }
   const tol = tolerenciaAdaptativa(items);
   assert.ok(tol > 3.6 && tol < 10.2, `tolerancia ${tol} deberia caer entre 3.6 y 10.2`);

@@ -144,16 +144,24 @@ python3 test/fixtures/extraer_items_movimientos.py pdf-prueba-movimientos.pdf
 
 ## Formatos aceptados
 
-El parser es deliberadamente estricto, no permisivo:
+El parser es deliberadamente estricto, no permisivo. Las reglas base son
+las mismas para los dos formatos de documento que reconoce la herramienta
+(orden de transferencia y listado de movimientos), con una diferencia en
+cada uno:
 
 - **Importes**: solo formato español completo, `1.234,56` o `12,34` (punto
   de millar opcional, coma decimal obligatoria con dos dígitos). Un importe
   en cualquier otro formato — `1234.56`, `1,234.56`, sin decimales — no se
   interpreta ni se fuerza: el campo queda vacío y la página se marca como
-  anomalía por campo incompleto.
-- **Fechas**: solo `dd-mm-aaaa` (con los separadores exactos y validando
-  que el día exista en ese mes). Cualquier otro formato de fecha tiene el
-  mismo destino: anomalía, no interpretación.
+  anomalía por campo incompleto. En el listado de movimientos, además, se
+  acepta el signo negativo pegado a los dígitos, delante (`-1.234,56`) o
+  detrás (`1.234,56-`) — las dos convenciones habituales en extractos —
+  pero nunca separado por un espacio.
+- **Fechas**: la orden de transferencia usa `dd-mm-aaaa`; el listado de
+  movimientos usa `dd/mm/aaaa`. Ambas se validan con los separadores
+  exactos de su formato y comprobando que el día exista en ese mes.
+  Cualquier otro formato de fecha tiene el mismo destino: anomalía, no
+  interpretación.
 
 Esto es intencional: ante un dato ambiguo, la herramienta prefiere fallar
 de forma visible en el panel de anomalías a arriesgarse a mostrar un
@@ -180,9 +188,24 @@ importe o una fecha equivocados en un extracto bancario.
   Conviene revisar `sondeo.txt` antes de compartirlo o de mirarlo con
   detenimiento: si aparece alguna palabra que no debería haberse
   conservado, se puede forzar su máscara con `--ocultar PALABRA` o subir el
-  `--umbral`.
+  `--umbral`. Para documentos tabulares (muchas filas por página, como el
+  listado de movimientos) usa `--modo linea`, que calcula la plantilla por
+  fila en vez de por página — necesario porque con pocas páginas de
+  muestra un dato real puede repetirse por azar y colarse como si fuera
+  una etiqueta.
+- `sondear_pdfjs.cjs` hace lo mismo que `sondeo_estructura.py` pero con
+  PDF.js, el motor real que usa la herramienta, en vez de con `pypdf`. Existe
+  porque ambos motores no siempre ven el mismo documento igual — así se
+  descubrió el problema de geometría que motivó el soporte de un segundo
+  formato. Misma norma: revisar la salida antes de compartirla.
+
+  ```bash
+  node sondear_pdfjs.cjs extracto.pdf --modo linea
+  ```
 
 ## Documentación
 
-- Diseño: `docs/superpowers/specs/2026-09-07-buscador-transferencias-pdf-design.md`
-- Plan: `docs/superpowers/plans/2026-09-07-buscador-transferencias-pdf.md`
+- Diseño del formato de transferencia (original): `docs/superpowers/specs/2026-09-07-buscador-transferencias-pdf-design.md`
+- Plan del formato de transferencia (original): `docs/superpowers/plans/2026-09-07-buscador-transferencias-pdf.md`
+- Diseño del soporte multiformato y la carga de varios PDF: `docs/superpowers/specs/2026-09-16-soporte-multiformato-design.md`
+- Plan del soporte multiformato: `docs/superpowers/plans/2026-09-16-soporte-multiformato.md`
