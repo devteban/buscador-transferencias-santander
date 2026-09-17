@@ -58,8 +58,9 @@ columna Archivo permite saber de qué PDF vino cada fila. Sobre esa tabla:
   lógico y se aplican en tiempo real.
 - **Ordenación por columna**: clic en la cabecera, clic de nuevo para
   invertir el sentido.
-- **Selector de columnas**: además de las seis columnas principales hay
-  columnas secundarias ocultas por defecto (beneficiario, IBAN, titular,
+- **Selector de columnas**: además de las columnas visibles por defecto
+  (archivo, página, ordenante, importe, concepto y las tres fechas) hay
+  columnas secundarias ocultas (formato, fila, beneficiario, IBAN, titular,
   entidad, oficina, nuestra referencia, importe origen, importe recibido,
   contravalor) que se activan desde el desplegable «Columnas» sin
   reprocesar el PDF — se extraen igualmente, solo no se muestran.
@@ -76,10 +77,10 @@ columna Archivo permite saber de qué PDF vino cada fila. Sobre esa tabla:
 
 ## El panel de anomalías
 
-Cada página del PDF que **no** encaja en el molde esperado —falta el
-marcador de "orden de transferencia", falta algún campo del núcleo, la
-página no tiene texto— se cuenta como anomalía en vez de intentar
-adivinarse. El panel de anomalías, siempre visible junto a los resultados,
+Cada página que **no** encaja del todo se cuenta como anomalía en vez de
+intentar adivinarse: sin texto, sin ningún formato reconocible (ni orden de
+transferencia ni listado de movimientos), o con algún campo del núcleo sin
+extraer. El panel de anomalías, siempre visible junto a los resultados,
 resume cuántas páginas hay por motivo y las lista con su número de página y
 el nombre del campo que faltó.
 
