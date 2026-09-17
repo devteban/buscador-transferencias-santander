@@ -574,7 +574,7 @@ function extraerOrdenanteConcepto(descripcion) {
   // fabricaria ordenantes falsos en filas de otro tipo (comisiones,
   // recibos) y ademas BORRARIA la descripcion real de esas filas sin dejar
   // rastro en concepto ni en conceptoBusqueda.
-  const PALABRAS_TRANSFERENCIA = /^(Transferencia|Traspaso|Abono|Ingreso)\b/;
+  const PALABRAS_TRANSFERENCIA = /^(Transferencia|Traspaso|Abono|Ingreso)\b/i;
   if (!PALABRAS_TRANSFERENCIA.test(descripcion.trim())) {
     const c = descripcion.trim();
     return { ordenante: null, concepto: c || null };
