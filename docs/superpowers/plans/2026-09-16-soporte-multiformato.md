@@ -1844,6 +1844,15 @@ function pintarResultados() {
       textContent: `${APP.registros.length} transferencias de `
         + `${archivosCargados.size} ${archivosCargados.size === 1 ? 'archivo' : 'archivos'}` }),
   ];
+  // Anadido durante la ronda de fix de la Task 5: si algun archivo de la
+  // ultima tanda cargada fallo, queda registrado en APP.fallosCarga y hay
+  // que seguir mostrandolo aqui -- si no, esta sustitucion completa de
+  // pintarResultados lo haria desaparecer en silencio.
+  if (APP.fallosCarga && APP.fallosCarga.length > 0) {
+    cabecera.push(el('p', { className: 'aviso',
+      textContent: 'No se pudieron cargar: ' + APP.fallosCarga
+        .map(f => `${f.archivo} (${f.motivo})`).join(', ') }));
+  }
   if (hayMovimientos) {
     cabecera.push(el('p', { className: 'sub aviso',
       textContent: 'Aviso: en el listado de movimientos, el concepto puede '
