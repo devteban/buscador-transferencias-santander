@@ -519,7 +519,6 @@ test('tolerenciaAdaptativa: saltos en cero no lanzan excepcion', () => {
 });
 
 test('parsearPaginaAuto: formato transferencia, sigue devolviendo el registro correcto', () => {
-  const items = [];
   // Reutiliza la geometria de paginaMolde, pero via items en bruto: se
   // construye a mano una pagina minima con el marcador y los datos del
   // nucleo, para no depender de convertir lineas ya agrupadas a items.
@@ -569,4 +568,55 @@ test('parsearPaginaAuto: pagina que no encaja en ningun formato da formato_no_re
   assert.equal(anomalias[0].motivo, 'formato_no_reconocido');
   assert.equal(anomalias[0].pagina, 4);
   assert.equal(anomalias[0].archivo, 'a.pdf');
+});
+
+test('parsearPaginaAuto: marcador partido entre dos alturas produce sin_marcador con archivo y fila', () => {
+  // detectarFormato ve el marcador al unir los fragmentos con espacios
+  // ("TRANSFERENCIAS RECIBIDAS - ORDEN DE" + "TRANSFERENCIA" en items
+  // distintos con Y ligeramente distinta cae fuera de tolerancia y no se
+  // agrupa en una sola linea), pero parsearPagina lo busca dentro de UNA
+  // linea ya agrupada -- si quedan en lineas distintas, buscarLinea no lo
+  // encuentra. Reproduce esa discrepancia con dos alturas separadas mas
+  // alla de la tolerancia por defecto del formato transferencia.
+  const items = [
+    item(20, 700, 'TRANSFERENCIAS RECIBIDAS - ORDEN DE', 10),
+    item(20, 685, 'TRANSFERENCIA', 10),
+  ];
+  const { registros, anomalias } = parsearPaginaAuto(items, 9, 't.pdf');
+  assert.deepEqual(registros, []);
+  assert.equal(anomalias.length, 1);
+  assert.equal(anomalias[0].motivo, 'sin_marcador');
+  assert.equal(anomalias[0].archivo, 't.pdf');
+  assert.equal(anomalias[0].fila, null);
+  assert.equal(anomalias[0].pagina, 9);
+});
+
+test('parsearPaginaAuto: formato transferencia con campos incompletos da registro Y anomalia', () => {
+  // Igual que paginaMoldeItems() pero SIN los fragmentos de CONCEPTO: ni
+  // Fecha de envio: -- exactamente lo que se corrigio para el otro test,
+  // pero aqui a proposito para probar la costura al reves: el registro
+  // debe conservarse con esos campos a null, no desaparecer.
+  const items = [
+    item(20, 760, 'TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA'),
+    item(20, 720, 'AYUNTAMIENTO DE VILLARRIBA'),
+    item(260, 720, '>>'),
+    item(300, 720, '345,00  EUR'),
+    item(520, 720, '>>'),
+    item(560, 720, 'EMPRESA EJEMPLO SL'),
+    item(20, 60, 'Refª Origen:   /   Nuestra Refª: 12345ABC678'
+      + 'Fecha operación: 03-02-2025 / Fecha valor: 04-02-2025'),
+  ];
+  const { registros, anomalias } = parsearPaginaAuto(items, 5, 'x.pdf');
+  assert.equal(registros.length, 1);
+  assert.equal(registros[0].formato, 'transferencia');
+  assert.equal(registros[0].archivo, 'x.pdf');
+  assert.equal(registros[0].pagina, 5);
+  assert.equal(registros[0].ordenante, 'AYUNTAMIENTO DE VILLARRIBA');
+  assert.equal(registros[0].concepto, null);
+  assert.equal(registros[0].fechaEnvio, null);
+  assert.equal(anomalias.length, 1);
+  assert.equal(anomalias[0].archivo, 'x.pdf');
+  assert.equal(anomalias[0].fila, null);
+  assert.equal(anomalias[0].motivo, 'campos_incompletos');
+  assert.deepEqual(anomalias[0].camposFaltantes.sort(), ['concepto', 'fechaEnvio']);
 });
