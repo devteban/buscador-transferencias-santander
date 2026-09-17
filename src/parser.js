@@ -539,3 +539,51 @@ export function parsearPaginaMovimientos(lineas, numeroPagina, archivo) {
   }
   return { registros, anomalias };
 }
+
+/**
+ * Punto de entrada unico para la interfaz. Recibe los fragmentos EN BRUTO
+ * de una pagina (contenido.items de PDF.js), detecta el formato y despacha
+ * al parser correspondiente. SIEMPRE devuelve arrays, tambien para el
+ * formato transferencia (con 0 o 1 registro), para que quien lo llame no
+ * tenga que distinguir "un registro" de "una lista de registros".
+ *
+ * parsearPagina (formato transferencia) no se modifica: conserva su firma
+ * y comportamiento actuales. Este despachador solo le anade archivo/fila al
+ * resultado, porque parsearPagina no conoce esos conceptos.
+ */
+export function parsearPaginaAuto(items, numeroPagina, archivo) {
+  const utiles = (items || []).filter(it => it && it.str && it.str.trim());
+  if (utiles.length === 0) {
+    return {
+      registros: [],
+      anomalias: [{ pagina: numeroPagina, archivo, fila: null,
+                    motivo: 'sin_texto', camposFaltantes: [] }],
+    };
+  }
+
+  const formato = detectarFormato(utiles);
+
+  if (formato === 'transferencia') {
+    const lineas = agruparEnLineas(utiles);
+    const { registro, anomalia } = parsearPagina(lineas, numeroPagina);
+    return {
+      registros: registro
+        ? [{ ...registro, formato: 'transferencia', archivo, fila: null }] : [],
+      anomalias: anomalia
+        ? [{ ...anomalia, archivo, fila: null }] : [],
+    };
+  }
+
+  if (formato === 'movimientos') {
+    const tolerancia = tolerenciaAdaptativa(utiles);
+    const lineas = agruparEnLineas(
+      utiles, tolerancia !== null ? { tolerancia } : undefined);
+    return parsearPaginaMovimientos(lineas, numeroPagina, archivo);
+  }
+
+  return {
+    registros: [],
+    anomalias: [{ pagina: numeroPagina, archivo, fila: null,
+                  motivo: 'formato_no_reconocido', camposFaltantes: [] }],
+  };
+}

@@ -2,9 +2,66 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import {
   normalizarImporte, normalizarFecha, normalizarTexto, agruparEnLineas,
-  parsearPagina, detectarFormato, tolerenciaAdaptativa,
+  parsearPagina, detectarFormato, tolerenciaAdaptativa, parsearPaginaAuto,
 } from '../src/parser.js';
 import { item, paginaMolde } from './fixtures/molde.js';
+
+/** Construye los items en bruto (formato PDF.js) de una pagina de
+ * transferencia minima, para probar parsearPaginaAuto sin pasar por
+ * paginaMolde (que ya da lineas agrupadas, no items). */
+function paginaMoldeItems() {
+  return [
+    item(20, 760, 'TRANSFERENCIAS RECIBIDAS -    ORDEN DE TRANSFERENCIA'),
+    item(20, 740, 'Fecha de envío: 05-02-2025'),
+    item(20, 720, 'AYUNTAMIENTO DE VILLARRIBA'),
+    item(260, 720, '>>'),
+    item(300, 720, '345,00  EUR'),
+    item(520, 720, '>>'),
+    item(560, 720, 'EMPRESA EJEMPLO SL'),
+    item(20, 700, 'CONCEPTO:'),
+    item(20, 688, 'Servicio de ejemplo 123'),
+    item(20, 60, 'Refª Origen:   /   Nuestra Refª: 12345ABC678'
+      + 'Fecha operación: 03-02-2025 / Fecha valor: 04-02-2025'),
+  ];
+}
+
+/**
+ * Construye los items EN BRUTO (formato PDF.js) de una pagina de listado de
+ * movimientos, reproduciendo la geometria real: cada fila se reparte en dos
+ * sub-alturas (salto 3.6, menor que la fuente) y las filas entre si quedan
+ * separadas con un paso total de 13.8 (salto real "entre filas" de 10.2 +
+ * el propio salto interno de 3.6 que ya se ha descontado dentro de la
+ * fila). NO USA `paginaMovimientos` de la Task 3: esa devuelve lineas ya
+ * agrupadas (el nivel correcto para probar `parsearPaginaMovimientos` en
+ * aislamiento), pero aqui hace falta EN BRUTO porque `parsearPaginaAuto`
+ * tiene que poder medir la tolerancia adaptativa antes de agrupar nada.
+ */
+function paginaMovimientosItems(filas, opciones = {}) {
+  const o = { conCabecera: true, ...opciones };
+  const items = [];
+  let y = 760;
+  if (o.conCabecera) {
+    items.push(item(20, y, 'Movimientos cuenta desde 01/01/2025 hasta 31/12/2025'));
+    y -= 20;
+    items.push(
+      item(20, y, 'Fecha Operacion'), item(90, y, 'Fecha Valor'),
+      item(160, y, 'Concepto'), item(600, y, 'Importe'),
+    );
+    y -= 20;
+  }
+  for (const f of filas) {
+    const o2 = {
+      fechaOperacion: '16/03/2025', fechaValor: '17/03/2025',
+      descripcion: 'Transferencia De Ayuntamiento De Villarriba, Concepto Servicio 123',
+      importe: '1.234,56', ...f,
+    };
+    items.push(item(20, y, o2.fechaOperacion), item(90, y, o2.fechaValor));
+    if (o2.descripcion) items.push(item(160, y - 3.6, o2.descripcion));
+    if (o2.importe !== null) items.push(item(600, y - 3.6, o2.importe));
+    y -= 13.8;
+  }
+  return items;
+}
 
 test('normalizarImporte: formato espanol con y sin miles', () => {
   assert.equal(normalizarImporte('345,00'), 345);
@@ -459,4 +516,57 @@ test('tolerenciaAdaptativa: saltos en cero no lanzan excepcion', () => {
     item(20, 670, 'G'), item(60, 670, 'H'),
   ];
   assert.doesNotThrow(() => tolerenciaAdaptativa(items));
+});
+
+test('parsearPaginaAuto: formato transferencia, sigue devolviendo el registro correcto', () => {
+  const items = [];
+  // Reutiliza la geometria de paginaMolde, pero via items en bruto: se
+  // construye a mano una pagina minima con el marcador y los datos del
+  // nucleo, para no depender de convertir lineas ya agrupadas a items.
+  const L = paginaMoldeItems();
+  const { registros, anomalias } = parsearPaginaAuto(L, 7, 'transferencias.pdf');
+  assert.equal(anomalias.length, 0);
+  assert.equal(registros.length, 1);
+  assert.equal(registros[0].formato, 'transferencia');
+  assert.equal(registros[0].archivo, 'transferencias.pdf');
+  assert.equal(registros[0].fila, null);
+  assert.equal(registros[0].pagina, 7);
+  assert.equal(registros[0].ordenante, 'AYUNTAMIENTO DE VILLARRIBA');
+});
+
+test('parsearPaginaAuto: formato movimientos, varios registros con archivo y fila', () => {
+  // 3 filas, no 2: detectarFormato exige >=3 fragmentos de importe, y con
+  // fragmentos EN BRUTO cada fila aporta solo uno (a diferencia de
+  // paginaMovimientos de la Task 3, que ya da lineas agrupadas y no sirve
+  // aqui — parsearPaginaAuto necesita fragmentos en bruto para poder medir
+  // la tolerancia adaptativa antes de agrupar lineas).
+  const items = paginaMovimientosItems([
+    { importe: '10,00' }, { importe: '20,00' }, { importe: '30,00' },
+  ]);
+  const { registros, anomalias } = parsearPaginaAuto(items, 2, 'movimientos.pdf');
+  assert.equal(anomalias.length, 0);
+  assert.equal(registros.length, 3);
+  assert.equal(registros[0].formato, 'movimientos');
+  assert.equal(registros[0].archivo, 'movimientos.pdf');
+  assert.deepEqual(registros.map(r => r.fila), [1, 2, 3]);
+  assert.deepEqual(registros.map(r => r.importe), [10, 20, 30]);
+});
+
+test('parsearPaginaAuto: pagina sin texto da anomalia sin_texto y ningun registro', () => {
+  const { registros, anomalias } = parsearPaginaAuto([], 1, 'a.pdf');
+  assert.deepEqual(registros, []);
+  assert.equal(anomalias.length, 1);
+  assert.equal(anomalias[0].motivo, 'sin_texto');
+  assert.equal(anomalias[0].archivo, 'a.pdf');
+  assert.equal(anomalias[0].pagina, 1);
+});
+
+test('parsearPaginaAuto: pagina que no encaja en ningun formato da formato_no_reconocido', () => {
+  const items = [item(20, 700, 'una pagina cualquiera sin forma reconocible')];
+  const { registros, anomalias } = parsearPaginaAuto(items, 4, 'a.pdf');
+  assert.deepEqual(registros, []);
+  assert.equal(anomalias.length, 1);
+  assert.equal(anomalias[0].motivo, 'formato_no_reconocido');
+  assert.equal(anomalias[0].pagina, 4);
+  assert.equal(anomalias[0].archivo, 'a.pdf');
 });
