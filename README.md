@@ -1,14 +1,20 @@
 # buscador-transferencias-santander
 
-Buscador local para extractos bancarios en PDF de miles de páginas (órdenes
-de transferencia recibidas, formato Santander). Convierte el PDF en una
-tabla filtrable y exportable, entera en el navegador, sin ningún servidor ni
-dependencia externa en tiempo de uso.
+Buscador local para extractos bancarios en PDF de miles de páginas, formato
+Santander. Admite dos formatos de página —orden de transferencia recibida y
+listado de movimientos— y los detecta automáticamente, sin que haya que
+indicar cuál es cuál. Convierte el PDF en una tabla filtrable y exportable,
+entera en el navegador, sin ningún servidor ni dependencia externa en tiempo
+de uso.
 
 ## Uso
 
 Abre `buscador.html` con doble clic y suelta el PDF encima de la ventana.
-Nada más que instalar, nada que configurar.
+Se puede soltar más de un PDF a la vez, de cualquiera de los dos formatos:
+todos se acumulan en la misma tabla, con la columna Archivo distinguiendo
+de qué PDF viene cada fila. El botón «Añadir más PDF» permite seguir
+cargando sin perder lo ya cargado. Nada más que instalar, nada que
+configurar.
 
 ### Uso sencillo en Windows con actualizaciones
 
@@ -29,10 +35,23 @@ nueva y abre el buscador. No hay que usar la terminal.
 
 ## Qué hace
 
-Una vez cargado el PDF, cada página que encaja en el molde de "orden de
-transferencia" se convierte en una fila con estos campos: ordenante,
-importe, concepto, fecha de operación, fecha valor y fecha de envío. Sobre
-esa tabla:
+Una vez cargado el PDF, cada página se compara con los dos moldes conocidos
+y, si encaja en alguno, se convierte en una fila:
+
+- **Orden de transferencia recibida**: ordenante, importe, concepto, fecha
+  de operación, fecha valor y fecha de envío.
+- **Listado de movimientos**: una o varias filas por página, con
+  ordenante, importe, concepto, fecha de operación y fecha valor (sin
+  fecha de envío, que ese formato no tiene). El concepto puede venir
+  truncado en el propio PDF de origen —lo corta el banco al generar el
+  extracto, no el parser— y en ese caso una búsqueda por una palabra que
+  quedara al final de un concepto largo no encontrará esa fila; cuando hay
+  filas de este formato cargadas, la aplicación muestra un aviso
+  recordándolo.
+
+El formato se detecta automáticamente página por página, sin que haya que
+indicarlo, y ambos pueden mezclarse libremente en la misma sesión: la
+columna Archivo permite saber de qué PDF vino cada fila. Sobre esa tabla:
 
 - **Filtros combinables**: por texto de ordenante, texto de concepto, rango
   de importe y rango en cada una de las tres fechas. Se combinan con Y
@@ -81,7 +100,7 @@ curl -fSL -o vendor/pdf.worker.min.js \
 curl -fSL -o vendor/pdf-lib.min.js \
   https://unpkg.com/pdf-lib@1.17.1/dist/pdf-lib.min.js
 
-node --test test/*.test.js   # 38 tests: test/parser.test.js + test/integracion.test.js
+node --test test/*.test.js   # 77 tests: test/parser*.test.js + test/integracion*.test.js
 node build.js                 # genera buscador.html a partir de src/
 ```
 
@@ -112,6 +131,15 @@ python3 test/fixtures/extraer_items.py pdf-prueba.pdf
   JSON sí se versiona y es lo que alimenta `test/integracion.test.js`; el
   PDF en sí no hace falta versionarlo porque el JSON ya contiene todo lo
   que el test necesita.
+
+El formato de listado de movimientos tiene su propio PDF de prueba y su
+propio par de scripts, con el mismo porqué (el PDF no se versiona, el JSON
+de items sí):
+
+```bash
+python3 test/fixtures/generar_pdf_prueba_movimientos.py pdf-prueba-movimientos.pdf
+python3 test/fixtures/extraer_items_movimientos.py pdf-prueba-movimientos.pdf
+```
 
 ## Formatos aceptados
 
